@@ -33,6 +33,7 @@ class UniversalRepository @Inject constructor(
     val library = dao.getAllPodcasts()
     val inbox = dao.getInbox()
     val queue = dao.getQueue()
+    val facts = factDao.getAllFactsFlow()
 
     // Java 25 / Loom readiness: This dispatcher should eventually act on Virtual Threads.
     // val LoomDispatcher = Executors.newVirtualThreadPerTaskExecutor().asCoroutineDispatcher()
@@ -61,11 +62,11 @@ class UniversalRepository @Inject constructor(
 
     suspend fun searchPodcasts(query: String): Result<List<ItunesSearchResult>> = safeApiCall {
         val request = Request.Builder().url("https://itunes.apple.com/search?term=$query&entity=podcast&media=podcast").build()
-        val response = client.newCall(request).execute()
-        if (!response.isSuccessful) throw Exception("iTunes search failed: ${response.code}")
-        
-        val json = response.body!!.string()
-        com.example.alakey.domain.NetworkLogic.parseItunesResults(json)
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw Exception("iTunes search failed: ${response.code}")
+            val json = response.body?.string() ?: throw Exception("Empty response body")
+            com.example.alakey.domain.NetworkLogic.parseItunesResults(json)
+        }
     }
 
     suspend fun subscribe(url: String): Result<Boolean> = safeApiCall {
@@ -115,20 +116,37 @@ class UniversalRepository @Inject constructor(
     }
 
     suspend fun savePodcast(p: PodcastEntity) = dao.insertPodcast(p)
-    suspend fun getPodcastById(id: String) = dao.getPodcastById(id)
+    suspend fun getPodcastById(id: String): PodcastEntity? {
+        val base = dao.getPodcastById(id) ?: return null
+        return hydrate(base)
+    }
+
+    private suspend fun hydrate(base: PodcastEntity): PodcastEntity {
+        val facts = factDao.getLatestFacts(base.id)
+        return com.example.alakey.domain.InformationModel.hydrate(base, facts)
+    }
     suspend fun getPodcastsByTitle(title: String) = dao.getEpisodesByTitle(title)
-    suspend fun updateProgress(id: String, progress: Long) = dao.updateProgress(id, progress, System.currentTimeMillis()) 
-    suspend fun updateLastPlayed(id: String, timestamp: Long) = dao.updateLastPlayed(id, timestamp)
+    suspend fun updateProgress(id: String, progress: Long) {
+        assertFact(id, com.example.alakey.domain.InformationModel.ATTR_PROGRESS, progress.toString())
+        assertFact(id, com.example.alakey.domain.InformationModel.ATTR_LAST_PLAYED, System.currentTimeMillis().toString())
+    }
+
+    suspend fun updateLastPlayed(id: String, timestamp: Long) = 
+        assertFact(id, com.example.alakey.domain.InformationModel.ATTR_LAST_PLAYED, timestamp.toString())
 
     private suspend fun fetchWithProxy(url: String): String = withContext(Dispatchers.IO) {
         val request = Request.Builder().url("https://api.allorigins.win/get?url=$url").build()
-        val json = client.newCall(request).execute().body!!.string()
-        com.example.alakey.domain.NetworkLogic.extractProxyContent(json)
+        client.newCall(request).execute().use { response ->
+            val json = response.body?.string() ?: throw Exception("Empty proxy response")
+            com.example.alakey.domain.NetworkLogic.extractProxyContent(json)
+        }
     }
 
     private suspend fun fetchDirect(url: String): String = withContext(Dispatchers.IO) {
         val request = Request.Builder().url(url).build()
-        client.newCall(request).execute().body!!.string()
+        client.newCall(request).execute().use { response ->
+            response.body?.string() ?: throw Exception("Empty response body")
+        }
     }
 
     suspend fun runSmartDownloads() {
@@ -151,16 +169,20 @@ class UniversalRepository @Inject constructor(
          if (podcast.audioUrl.isEmpty()) throw Exception("No audio URL")
          
          val request = Request.Builder().url(podcast.audioUrl).build()
-         val response = client.newCall(request).execute()
-         if (!response.isSuccessful) throw Exception("Download failed: ${response.code}")
-         
-         val file = File(context.filesDir, "${podcastId}.mp3")
-         val inputStream = response.body!!.byteStream()
-         FileOutputStream(file).use { output ->
-             inputStream.copyTo(output)
+         client.newCall(request).execute().use { response ->
+             if (!response.isSuccessful) throw Exception("Download failed: ${response.code}")
+             
+             val file = File(context.filesDir, "${podcastId}.mp3")
+             val body = response.body ?: throw Exception("Empty response body")
+             body.byteStream().use { inputStream ->
+                 FileOutputStream(file).use { output ->
+                     inputStream.copyTo(output)
+                 }
+             }
+             dao.updateAudioPath(podcastId, file.absolutePath)
+             assertFact(podcastId, com.example.alakey.domain.InformationModel.ATTR_DOWNLOADED, "true")
+             file.absolutePath
          }
-         dao.updateAudioPath(podcastId, file.absolutePath)
-         file.absolutePath
     }
 
     suspend fun unsubscribe(title: String) = withContext(Dispatchers.IO) {
@@ -174,25 +196,42 @@ class UniversalRepository @Inject constructor(
         dao.deleteByTitle(title)
     }
 
-    suspend fun addToQueue(id: String) = dao.addToQueue(id, System.currentTimeMillis())
-    suspend fun removeFromQueue(id: String) = dao.removeFromQueue(id)
-    suspend fun getLastPlayedPodcast(): PodcastEntity? = dao.getLastPlayedPodcast()
-    suspend fun getRadioCandidate(): PodcastEntity? = dao.getRadioCandidate()
-    suspend fun saveProgress(id: String, progress: Long) = dao.updateProgress(id, progress, System.currentTimeMillis())
+    suspend fun addToQueue(id: String) {
+        assertFact(id, com.example.alakey.domain.InformationModel.ATTR_IN_QUEUE, "true")
+        assertFact(id, com.example.alakey.domain.InformationModel.ATTR_QUEUE_ORDER, System.currentTimeMillis().toString())
+    }
+
+    suspend fun removeFromQueue(id: String) {
+        assertFact(id, com.example.alakey.domain.InformationModel.ATTR_IN_QUEUE, "false")
+    }
+
+    suspend fun getLastPlayedPodcast(): PodcastEntity? {
+         val p = dao.getLastPlayedPodcast() ?: return null
+         return hydrate(p)
+    }
+
+    suspend fun getRadioCandidate(): PodcastEntity? {
+        val p = dao.getRadioCandidate() ?: return null
+        return hydrate(p)
+    }
+
+    suspend fun saveProgress(id: String, progress: Long) = updateProgress(id, progress)
     suspend fun savePalette(id: String, palette: PodcastPalette) = dao.updatePalette(id, palette)
 
     suspend fun markPlayed(p: PodcastEntity) {
-        dao.markAsPlayed(p.id, System.currentTimeMillis())
+        updateProgress(p.id, p.duration)
+        removeFromQueue(p.id)
     }
 
     suspend fun deleteDownload(id: String) {
         withContext(Dispatchers.IO) {
-            val p = dao.getPodcastById(id) ?: return@withContext
+            val p = getPodcastById(id) ?: return@withContext
             if (p.isDownloaded && p.audioUrl.isNotEmpty()) {
                 val file = File(p.audioUrl)
                 if (file.exists()) file.delete()
             }
-            dao.setDownloaded(id, false)
+            assertFact(id, com.example.alakey.domain.InformationModel.ATTR_DOWNLOADED, "false")
+            dao.setDownloaded(id, false) // Still update core for now to keep UI flow simpler
         }
     }
 
@@ -202,7 +241,10 @@ class UniversalRepository @Inject constructor(
             val toMark = com.example.alakey.domain.PureLogic.determineArchiveCandidates(ref, episodes)
 
             if (toMark.isNotEmpty()) {
-                dao.markAsPlayedBatch(toMark, System.currentTimeMillis())
+                toMark.forEach { id -> 
+                    val ep = dao.getPodcastById(id)
+                    if (ep != null) markPlayed(ep)
+                }
             }
         }
     }

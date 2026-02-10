@@ -7,8 +7,11 @@ import androidx.room.Query
 
 @Dao
 interface FactDao {
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(fact: FactEntity)
+
+    @Query("SELECT * FROM facts ORDER BY tx DESC")
+    fun getAllFactsFlow(): kotlinx.coroutines.flow.Flow<List<FactEntity>>
 
     @Query("SELECT * FROM facts WHERE entityId = :entityId")
     suspend fun getFactsUsingEntity(entityId: String): List<FactEntity>
@@ -18,6 +21,15 @@ interface FactDao {
     
     @Query("SELECT * FROM facts")
     suspend fun getAllFacts(): List<FactEntity>
-    
-    // Datomic-style: Point-in-time query capability could go here eventually
+
+    @Query("""
+        SELECT f1.* FROM facts f1
+        INNER JOIN (
+            SELECT entityId, attribute, MAX(tx) as maxTx
+            FROM facts
+            WHERE entityId = :entityId
+            GROUP BY entityId, attribute
+        ) f2 ON f1.entityId = f2.entityId AND f1.attribute = f2.attribute AND f1.tx = f2.maxTx
+    """)
+    suspend fun getLatestFacts(entityId: String): List<FactEntity>
 }

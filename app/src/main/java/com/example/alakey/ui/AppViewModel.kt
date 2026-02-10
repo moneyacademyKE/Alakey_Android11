@@ -271,45 +271,48 @@ class AppViewModel @Inject constructor(
             }
         }
 
-        // Hydrate Library
+        // Epochal Reconciler: Derived state from Facts + Core Data
         viewModelScope.launch {
-            repo.library.collect { podcasts ->
-                updateState { it.copy(podcasts = podcasts) }
-                // Re-link current podcast object if library updates
-                val currentId = playbackClient.state.value.currentMediaId
-                if (currentId != null) {
-                    val p = podcasts.find { it.id == currentId }
-                    if (p != null) {
-                        updateState { it.copy(current = p) }
-                    }
+            combine(repo.library, repo.facts) { library, facts -> 
+                library to facts
+            }.collect { (library, allFacts) ->
+                val factMap = allFacts.groupBy { it.entityId }
+                
+                // Hydrate entire library
+                val hydratedLibrary = library.map { base ->
+                    val epFacts = factMap[base.id] ?: emptyList()
+                    com.example.alakey.domain.InformationModel.hydrate(base, epFacts)
+                }
+
+                // Derive Inbox and Queue from hydrated values (Simplicity: Single Source of Truth)
+                val hydratedQueue = hydratedLibrary.filter { it.isInQueue }.sortedBy { it.queueOrder }
+                val hydratedInbox = hydratedLibrary.filter { !it.isInQueue && it.progress == 0L }
+
+                updateState { s ->
+                    val currentId = s.current?.id
+                    val hydratedCurrent = if (currentId != null) {
+                        hydratedLibrary.find { it.id == currentId } ?: s.current
+                    } else s.current
+
+                    s.copy(
+                        podcasts = hydratedLibrary,
+                        queue = hydratedQueue,
+                        inbox = hydratedInbox,
+                        current = hydratedCurrent
+                    )
                 }
             }
         }
 
-        // Hydrate Queue and Inbox
-        viewModelScope.launch {
-            repo.queue.collect { queue ->
-                updateState { it.copy(queue = queue) }
-            }
-        }
-        
-        viewModelScope.launch {
-            repo.inbox.collect { inbox ->
-                updateState { it.copy(inbox = inbox) }
-            }
-        }
-        
-        // Hydrate Playback State
+        // Hydrate Playback State (Independent of Application Facts for now, as it's real-time hardware state)
         viewModelScope.launch {
             playbackClient.state.collect { pbState ->
-                val allKnown = _uiState.value.podcasts + _uiState.value.queue + _uiState.value.inbox + _uiState.value.optimisticPodcasts
-                val currentInState = _uiState.value.current
-                val podcast = allKnown.find { it.id == pbState.currentMediaId } 
-                    ?: if (currentInState?.id == pbState.currentMediaId) currentInState else null
+                val allKnown = _uiState.value.podcasts + _uiState.value.optimisticPodcasts
+                val podcast = allKnown.find { it.id == pbState.currentMediaId }
                 
                 updateState {
                     it.copy(
-                        current = podcast,
+                        current = podcast ?: it.current,
                         isPlaying = pbState.isPlaying,
                         currentTime = pbState.currentPosition,
                         duration = pbState.duration,
@@ -318,12 +321,10 @@ class AppViewModel @Inject constructor(
                     )
                 }
                 
-                // Extract color if current artwork changed
                 if (podcast != null && podcast.imageUrl != _uiState.value.current?.imageUrl) {
                     extractColor(podcast.imageUrl)
                 }
                 
-                // Update DB with progress
                 if (pbState.isPlaying && podcast != null && pbState.currentPosition > 0) {
                      repo.updateProgress(podcast.id, pbState.currentPosition)
                      repo.updateLastPlayed(podcast.id, System.currentTimeMillis())
