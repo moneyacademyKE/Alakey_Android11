@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -124,6 +125,7 @@ fun MainContent() {
 
     var showAddDialog by remember { mutableStateOf(false) }
     var showDebug by remember { mutableStateOf(false) } // Debug Mode
+    var showSleepSheet by remember { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         FluxBackground(amplitude = state.amplitude, color = Color(state.dominantColor))
@@ -233,7 +235,7 @@ fun MainContent() {
             ) { filter ->
                 LazyColumn(
                     state = listState,
-                    contentPadding = PaddingValues(top = 0.dp, bottom = 120.dp, start = 16.dp, end = 16.dp)
+                    contentPadding = PaddingValues(top = 0.dp, bottom = 176.dp, start = 16.dp, end = 16.dp)
                 ) {
                     // Hero Item
                     if (filter == "All") {
@@ -247,7 +249,7 @@ fun MainContent() {
                                 onQueue = { if (heroPodcast != null) vm.addToQueue(heroPodcast) },
                                 onPrev = { vm.dispatch(AppViewModel.Action.PlayPreviousInQueue) },
                                 onNext = { vm.dispatch(AppViewModel.Action.PlayNextInQueue) },
-                                onTimer = { vm.dispatch(AppViewModel.Action.CycleSleepTimer) },
+                                onTimer = { showSleepSheet = true },
                                 onClick = { if (heroPodcast != null) vm.setPlayerOpen(true) }
                             )
                             Spacer(Modifier.height(16.dp))
@@ -256,13 +258,20 @@ fun MainContent() {
 
                     if (filteredPodcasts.isEmpty()) {
                        item { 
-                           Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) { 
-                               Column(horizontalAlignment = Alignment.CenterHorizontally) { 
+                           EmptyState(
+                               icon = Icons.Rounded.FilterListOff,
+                               title = if (state.podcasts.isEmpty()) "Build your library" else "No episodes found",
+                               body = if (state.podcasts.isEmpty()) "Search the marketplace or paste an RSS feed to start listening." else "Try a different filter or add more shows.",
+                               actionLabel = if (state.podcasts.isEmpty()) "Add podcast" else null,
+                               onAction = { showAddDialog = true }
+                           )
+                           /*Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) { 
+                               Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                    Icon(Icons.Rounded.FilterListOff, null, tint = Color.White.copy(0.3f), modifier = Modifier.size(48.dp))
                                    Spacer(Modifier.height(16.dp))
                                    NebulaText("No episodes found", MaterialTheme.typography.bodyLarge, glowColor = Color.Transparent) 
                                } 
-                           } 
+                           }*/
                        }
                    } else {
                        val grouped = if(state.activeFilter == "All") filteredPodcasts.groupBy { it.title } else mapOf("Results" to filteredPodcasts)
@@ -316,20 +325,20 @@ fun MainContent() {
                }
            }
            } // Closing brace for the added Column
-         } else if (currentScreen == AppViewModel.Screen.Inbox) {
+          } else if (currentScreen == AppViewModel.Screen.Inbox) {
           // INBOX VIEW
           val inbox = state.inbox
-          LazyColumn(contentPadding = PaddingValues(top = 24.dp, bottom = 120.dp, start = 16.dp, end = 16.dp)) {
-              if (inbox.isEmpty()) {
-                   item { 
-                       Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) { 
-                           Column(horizontalAlignment = Alignment.CenterHorizontally) { 
-                               Icon(Icons.Rounded.Inbox, null, tint = Color.White.copy(0.3f), modifier = Modifier.size(48.dp))
-                               Spacer(Modifier.height(16.dp))
-                               NebulaText("All caught up!", MaterialTheme.typography.bodyLarge, glowColor = Color.Transparent) 
-                           } 
-                       } 
-                   }
+           LazyColumn(contentPadding = PaddingValues(top = 24.dp, bottom = 176.dp, start = 16.dp, end = 16.dp)) {
+               if (inbox.isEmpty()) {
+                    item { 
+                       EmptyState(
+                           icon = Icons.Rounded.Inbox,
+                           title = "All caught up",
+                           body = "New unplayed episodes will appear here after your feeds sync.",
+                           actionLabel = "Discover shows",
+                           onAction = { vm.navigate(AppViewModel.Screen.Marketplace) }
+                       )
+                    }
               } else {
                   items(items = inbox, key = { it.id }) { ep ->
                       Box(Modifier.padding(bottom=8.dp)) {
@@ -357,10 +366,52 @@ fun MainContent() {
                   }
               }
           }
-   } else {
-       GlassMarketplace(onSubscribe = { query -> 
-           vm.marketplaceSubscribe(query)
-       })
+    } else if (currentScreen == AppViewModel.Screen.Queue) {
+          val queue = state.queue
+          LazyColumn(contentPadding = PaddingValues(top = 24.dp, bottom = 176.dp, start = 16.dp, end = 16.dp)) {
+              if (queue.isEmpty()) {
+                  item {
+                      EmptyState(
+                          icon = Icons.AutoMirrored.Rounded.QueueMusic,
+                          title = "Queue is empty",
+                          body = "Long-press an episode or tap its queue action to line up listening.",
+                          actionLabel = "Back to library",
+                          onAction = { vm.navigate(AppViewModel.Screen.Library) }
+                      )
+                  }
+              } else {
+                  item {
+                      Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                          Text("Up next", color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                          Text("${queue.size} queued", color = Color(0xFFBD00FF), style = MaterialTheme.typography.labelLarge)
+                      }
+                  }
+                  items(items = queue, key = { it.id }) { ep ->
+                      GlassPodcastRow(
+                          spec = PodcastRowSpec(
+                              id = ep.id,
+                              title = ep.episodeTitle,
+                              subtitle = ep.title,
+                              imageUrl = ep.imageUrl,
+                              isDownloaded = ep.isDownloaded,
+                              isInQueue = ep.isInQueue,
+                              progress = if (ep.duration > 0) ep.progress.toFloat() / ep.duration else 0f
+                          ),
+                          onClick = { vm.play(ep); vm.setPlayerOpen(true) },
+                          onDownload = { vm.downloadEpisode(ep.id) },
+                          onAddToQueue = { vm.removeFromQueue(ep) },
+                          onMarkPlayed = { vm.markPlayed(ep) },
+                          onArchiveOlder = { vm.markOlderPlayed(ep) },
+                          onDeleteDownload = { vm.deleteDownload(ep) },
+                          onPlayNext = { vm.playNext(ep) }
+                      )
+                  }
+              }
+          }
+    } else {
+        GlassMarketplace(onSubscribe = { query -> 
+            vm.marketplaceSubscribe(query)
+        })
     }
 }
     
@@ -399,7 +450,28 @@ fun MainContent() {
                 onSetSpeed = { vm.setPlaybackSpeed(it) },
                 onNext = { vm.playNextEpisode() },
                 onPrev = { vm.playPreviousEpisode() },
-                onSleepTimer = { vm.cycleSleepTimer() }
+                onSleepTimer = { showSleepSheet = true }
+            )
+        }
+
+        if (state.current != null && !state.isPlayerOpen && !state.isCarMode) {
+            MiniPlayerDock(
+                spec = PlayerSpec(
+                    title = state.current!!.episodeTitle,
+                    artist = state.current!!.title,
+                    imageUrl = state.current!!.imageUrl,
+                    isPlaying = state.isPlaying,
+                    currentMs = state.currentTime,
+                    durationMs = state.duration,
+                    speed = state.speed,
+                    sleepTimerSeconds = sleepTimerSeconds,
+                    vibrantColor = state.vibrantColor
+                ),
+                queueCount = state.queue.size,
+                onClick = { vm.setPlayerOpen(true) },
+                onTogglePlay = { vm.togglePlay() },
+                onQueue = { vm.navigate(AppViewModel.Screen.Queue) },
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 92.dp, start = 16.dp, end = 16.dp)
             )
         }
         
@@ -447,12 +519,103 @@ fun MainContent() {
         )
     }
 
+    if (showSleepSheet) {
+        SleepTimerSheet(
+            currentSeconds = sleepTimerSeconds,
+            onDismiss = { showSleepSheet = false },
+            onSelectMinutes = { minutes ->
+                if (minutes == 0) vm.cancelSleepTimer() else vm.startSleepTimer(minutes)
+                showSleepSheet = false
+            }
+        )
+    }
+
     if (showDebug) {
         DebugOverlay(
             historySize = vm.history.size,
             onTimeTravel = { vm.travelTo(it) },
             logs = logs
         )
+    }
+}
+
+@Composable
+private fun EmptyState(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    body: String,
+    actionLabel: String? = null,
+    onAction: () -> Unit = {}
+) {
+    Box(Modifier.fillMaxWidth().height(240.dp), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
+            Icon(icon, null, tint = Color.White.copy(0.34f), modifier = Modifier.size(52.dp))
+            Spacer(Modifier.height(16.dp))
+            NebulaText(title, MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), glowColor = Color.Transparent)
+            Spacer(Modifier.height(8.dp))
+            Text(body, color = Color.White.copy(0.62f), style = MaterialTheme.typography.bodyMedium)
+            if (actionLabel != null) {
+                Spacer(Modifier.height(18.dp))
+                Button(onClick = onAction, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00F0FF), contentColor = Color.Black)) {
+                    Text(actionLabel)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MiniPlayerDock(
+    spec: PlayerSpec,
+    queueCount: Int,
+    onClick: () -> Unit,
+    onTogglePlay: () -> Unit,
+    onQueue: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    PrismaticGlass(modifier.fillMaxWidth().height(76.dp), RoundedCornerShape(24.dp)) {
+        Row(Modifier.fillMaxSize().clickable { onClick() }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            AsyncImage(spec.imageUrl, null, Modifier.size(56.dp).clip(RoundedCornerShape(16.dp)), contentScale = ContentScale.Crop)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(spec.title, color = Color.White, fontWeight = FontWeight.Bold, maxLines = 1)
+                Text(spec.artist, color = Color.White.copy(0.58f), style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                LinearProgressIndicator(
+                    progress = { (spec.currentMs.toFloat() / spec.durationMs.coerceAtLeast(1).toFloat()).coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp).height(3.dp).clip(CircleShape),
+                    color = Color(spec.vibrantColor),
+                    trackColor = Color.White.copy(0.12f)
+                )
+            }
+            IconButton(onClick = onQueue) {
+                BadgedBox(badge = { if (queueCount > 0) Badge { Text(queueCount.toString()) } }) {
+                    Icon(Icons.AutoMirrored.Rounded.QueueMusic, null, tint = Color.White.copy(0.82f))
+                }
+            }
+            MorphingPlayPauseButton(spec.isPlaying, onTogglePlay, Modifier.size(34.dp))
+        }
+    }
+}
+
+@Composable
+private fun SleepTimerSheet(currentSeconds: Int, onDismiss: () -> Unit, onSelectMinutes: (Int) -> Unit) {
+    Dialog(onDismissRequest = onDismiss) {
+        PrismaticGlass(Modifier.fillMaxWidth(), RoundedCornerShape(28.dp)) {
+            Column(Modifier.padding(22.dp)) {
+                Text("Sleep timer", color = Color.White, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(6.dp))
+                Text(if (currentSeconds > 0) "Currently ${currentSeconds / 60} minutes remaining" else "Pause playback after a chosen duration.", color = Color.White.copy(0.62f))
+                Spacer(Modifier.height(18.dp))
+                listOf(15, 30, 45, 60, 0).forEach { minutes ->
+                    val label = if (minutes == 0) "Off" else "$minutes minutes"
+                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { onSelectMinutes(minutes) }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(if (minutes == 0) Icons.Rounded.TimerOff else Icons.Rounded.Timer, null, tint = if (minutes == 0) Color.White.copy(0.5f) else Color(0xFF00F0FF))
+                        Spacer(Modifier.width(12.dp))
+                        Text(label, color = Color.White, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -467,6 +630,8 @@ fun AddPodcastDialog(
 ) {
     var text by remember { mutableStateOf("") }
     var selectedTab by remember { mutableIntStateOf(0) }
+    var importingFeed by remember { mutableStateOf<String?>(null) }
+    val isValidFeedUrl = text.startsWith("https://") || text.startsWith("http://")
 
     Dialog(onDismissRequest = onDismiss) {
         PrismaticGlass(Modifier.fillMaxWidth().height(400.dp), RoundedCornerShape(24.dp)) {
@@ -478,21 +643,23 @@ fun AddPodcastDialog(
                 Spacer(Modifier.height(16.dp))
                 if (selectedTab == 0) {
                     Column {
-                        OutlinedTextField(value = text, onValueChange = { text = it; onSearch(it) }, label = { Text("Search for a podcast") }, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(value = text, onValueChange = { text = it; onSearch(it) }, label = { Text("Search for a podcast") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                         Spacer(Modifier.height(16.dp))
                         LazyColumn {
                             items(searchResults) { result ->
                                 Box(Modifier.padding(bottom=8.dp)) {
+                                    val isSyncing = importingFeed == result.feedUrl
                                     GlassPodcastRow(
                                         spec = PodcastRowSpec(
                                             id = result.feedUrl, // No dedicated ID for search result item, use feed
                                             title = result.collectionName,
                                             subtitle = "", // artistName not available in ItunesSearchResult mapping
-                                            imageUrl = result.artworkUrl100
+                                            imageUrl = result.artworkUrl100,
+                                            isSyncing = isSyncing
                                         ),
-                                        onClick = { onImport(result.feedUrl) }, // Tap adds feed
+                                        onClick = { importingFeed = result.feedUrl; onImport(result.feedUrl) }, // Tap adds feed
                                         onDownload = { /* No-op, or preview? */ },
-                                        onAddToQueue = { onImport(result.feedUrl) } // Add = Subscribe
+                                        onAddToQueue = { importingFeed = result.feedUrl; onImport(result.feedUrl) } // Add = Subscribe
                                     )
                                 }
                             }
@@ -505,11 +672,21 @@ fun AddPodcastDialog(
                         Box(Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(12.dp)).background(Color.Black.copy(0.3f)).padding(horizontal = 16.dp), contentAlignment = Alignment.CenterStart) { 
                             BasicTextField(value = text, onValueChange = { text = it }, textStyle = MaterialTheme.typography.bodyLarge.copy(color = Color.White), singleLine = true, decorationBox = { if (text.isEmpty()) Text("https://...", color = Color.Gray); it() }, modifier = Modifier.fillMaxWidth()) 
                         }
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            if (text.isEmpty() || isValidFeedUrl) "Paste a direct RSS or Atom feed URL." else "Feed URL must start with http:// or https://",
+                            color = if (text.isEmpty() || isValidFeedUrl) Color.White.copy(0.55f) else Color(0xFFFF6B6B),
+                            style = MaterialTheme.typography.bodySmall
+                        )
                         Spacer(Modifier.height(24.dp))
                         Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) { 
                             TextButton(onClick = onDismiss) { Text("Cancel", color = Color.White.copy(0.6f)) }
                             Spacer(Modifier.width(8.dp))
-                            Button(onClick = { onImport(text) }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00F0FF), contentColor = Color.Black)) { Text("Import") } 
+                            Button(
+                                enabled = isValidFeedUrl,
+                                onClick = { importingFeed = text; onImport(text) },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00F0FF), contentColor = Color.Black)
+                            ) { Text(if (importingFeed == text) "Syncing..." else "Import") }
                         }
                     }
                 }

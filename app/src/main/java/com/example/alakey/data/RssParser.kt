@@ -1,107 +1,71 @@
 package com.example.alakey.data
 
 import android.util.Log
-import android.util.Xml
-import org.xmlpull.v1.XmlPullParser
 import java.io.StringReader
+import javax.xml.parsers.DocumentBuilderFactory
+import org.w3c.dom.Element
+import org.w3c.dom.Node
+import org.xml.sax.InputSource
 
-/**
- * Pure functional parser.
- * No state. No side effects. Just String -> ListView.
- */
+/** Pure parser: feed XML plus source URL becomes immutable episode values. */
 object RssParser {
     fun parse(xml: String, feedUrl: String): List<PodcastEntity> {
         return try {
-            val parser = Xml.newPullParser().apply {
-                setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
-                setInput(StringReader(xml))
+            val document = DocumentBuilderFactory.newInstance().apply {
+                isNamespaceAware = false
+                isExpandEntityReferences = false
+            }.newDocumentBuilder().parse(InputSource(StringReader(xml)))
+
+            val root = document.documentElement ?: return emptyList()
+            val channel = root.directElements("channel").firstOrNull() ?: root
+            val channelTitle = channel.directText("title").ifEmpty { "Podcast" }
+            val channelImage = channel.directElements("itunes:image").firstOrNull()?.attr("href")
+                ?: channel.directElements("image").firstOrNull()?.directText("url")
+                ?: ""
+
+            channel.directElements("item", "entry").mapNotNull { entry ->
+                readEntry(entry, feedUrl, channelTitle, channelImage)
             }
-            readFeed(parser, feedUrl)
         } catch (e: Exception) {
             Log.e("RssParser", "Parse failure", e)
             emptyList()
         }
     }
 
-    private fun readFeed(parser: XmlPullParser, feedUrl: String): List<PodcastEntity> {
-        val entries = mutableListOf<PodcastEntity>()
-        var eventType = parser.eventType
-        // Store channel title
-        var channelTitle = "Podcast" 
-        var channelImage = ""
+    private fun readEntry(
+        entry: Element,
+        feedUrl: String,
+        channelTitle: String,
+        channelImage: String
+    ): PodcastEntity? {
+        val title = entry.directText("title")
+        val audioUrl = entry.directElements("enclosure").firstOrNull()?.attr("url")
+            ?: entry.directElements("link").firstOrNull { it.attr("rel") == "enclosure" }?.attr("href")
+            ?: ""
+        if (title.isEmpty() || audioUrl.isEmpty()) return null
 
-        // Fast-forward to root
-        while (eventType != XmlPullParser.START_TAG && eventType != XmlPullParser.END_DOCUMENT) {
-            eventType = parser.next()
-        }
-        
-        if (eventType == XmlPullParser.END_DOCUMENT) return emptyList()
+        val guid = entry.directText("guid")
+        val imageUrl = entry.directElements("itunes:image").firstOrNull()?.attr("href") ?: channelImage
+        val description = entry.directText("description", "summary", "content")
+            .replace(Regex("<.*?>"), " ")
+            .trim()
+            .take(500)
 
-        while (parser.next() != XmlPullParser.END_DOCUMENT) {
-            if (parser.eventType == XmlPullParser.START_TAG) {
-                if (parser.name == "title" && channelTitle == "Podcast") {
-                    channelTitle = readText(parser)
-                } else if (parser.name == "itunes:image" || parser.name == "image") {
-                    // Capture channel-level artwork
-                    val href = parser.getAttributeValue(null, "href")
-                    val url = if (!href.isNullOrEmpty()) href else ""
-                    if (url.isNotEmpty()) channelImage = url
-                } else if (parser.name == "item" || parser.name == "entry") {
-                    readEntry(parser, feedUrl, channelTitle, channelImage)?.let { entries.add(it) }
-                }
-            }
-        }
-        return entries
-    }
-
-    private fun readEntry(parser: XmlPullParser, feedUrl: String, channelTitle: String, channelImage: String): PodcastEntity? {
-        var title = ""
-        var description = ""
-        var audioUrl = ""
-        var imageUrl = ""
-        var pubDate = ""
-        var guid = ""
-        var duration = 0L
         val attrs = mutableMapOf<String, String>()
-
-        while (parser.next() != XmlPullParser.END_TAG) {
-            if (parser.eventType != XmlPullParser.START_TAG) continue
-            when (parser.name) {
-                "title" -> title = readText(parser)
-                "description", "summary", "content" -> description = readText(parser)
-                "enclosure" -> audioUrl = parser.getAttributeValue(null, "url") ?: ""
-                "itunes:image" -> imageUrl = parser.getAttributeValue(null, "href") ?: ""
-                "pubDate", "published" -> pubDate = readText(parser)
-                "guid" -> guid = readText(parser)
-                "itunes:duration" -> {
-                    val raw = readText(parser)
-                    duration = parseDuration(raw)
-                }
-                "itunes:season" -> attrs["season"] = readText(parser)
-                "itunes:episodeType" -> attrs["episodeType"] = readText(parser)
-                else -> skip(parser)
-            }
-        }
-        
-        // Validate required fields
-        if (audioUrl.isEmpty() || title.isEmpty()) return null
-        
-        // Default download policy for the registry
+        entry.directText("itunes:season").takeIf { it.isNotEmpty() }?.let { attrs["season"] = it }
+        entry.directText("itunes:episodeType").takeIf { it.isNotEmpty() }?.let { attrs["episodeType"] = it }
         attrs["downloadPolicy"] = "latest"
 
-        // Generate deterministic ID
-        val finalId = if (guid.isNotEmpty()) "$feedUrl/$guid" else (feedUrl + audioUrl).hashCode().toString()
-
         return PodcastEntity(
-            id = finalId,
+            id = if (guid.isNotEmpty()) "$feedUrl/$guid" else (feedUrl + audioUrl).hashCode().toString(),
             title = channelTitle,
             episodeTitle = title,
-            description = description.replace(Regex("<.*?>"), " ").trim().take(500),
-            imageUrl = if (imageUrl.isNotEmpty()) imageUrl else channelImage,
+            description = description,
+            imageUrl = imageUrl,
             audioUrl = audioUrl,
             feedUrl = feedUrl,
-            duration = duration,
-            pubDate = pubDate,
+            duration = parseDuration(entry.directText("itunes:duration")),
+            pubDate = entry.directText("pubDate", "published"),
             attributes = attrs
         )
     }
@@ -114,29 +78,27 @@ object RssParser {
                 2 -> parts[0] * 60 + parts[1]
                 1 -> parts[0]
                 else -> 0L
-            } * 1000 // Convert to MS
+            } * 1000
         } catch (e: Exception) {
             0L
         }
     }
 
-    private fun readText(parser: XmlPullParser): String {
-        var result = ""
-        if (parser.next() == XmlPullParser.TEXT) {
-            result = parser.text
-            parser.nextTag()
-        }
-        return result
+    private fun Element.directText(vararg names: String): String {
+        return directElements(*names).firstOrNull()?.textContent?.trim().orEmpty()
     }
 
-    private fun skip(parser: XmlPullParser) {
-        if (parser.eventType != XmlPullParser.START_TAG) return
-        var depth = 1
-        while (depth != 0) {
-            when (parser.next()) {
-                XmlPullParser.END_TAG -> depth--
-                XmlPullParser.START_TAG -> depth++
+    private fun Element.directElements(vararg names: String): List<Element> {
+        val accepted = names.toSet()
+        val matches = mutableListOf<Element>()
+        for (i in 0 until childNodes.length) {
+            val node = childNodes.item(i)
+            if (node.nodeType == Node.ELEMENT_NODE && node is Element && node.tagName in accepted) {
+                matches.add(node)
             }
         }
+        return matches
     }
+
+    private fun Element.attr(name: String): String = getAttribute(name).orEmpty()
 }

@@ -284,6 +284,12 @@ class PlaybackClient @Inject constructor(
             _sleepTimerSeconds.value = initialSleepDuration
         }
     }
+
+    fun cancelSleepTimer() {
+        sleepTimerJob?.cancel()
+        initialSleepDuration = 0
+        _sleepTimerSeconds.value = 0
+    }
     
     fun cleanup() {
         stopProgressPolling()

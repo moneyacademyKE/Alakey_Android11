@@ -6,7 +6,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.alakey.data.ItunesSearchResult
 import com.example.alakey.data.PodcastEntity
-import com.example.alakey.data.PodcastPalette
 import com.example.alakey.data.UniversalRepository
 import com.example.alakey.data.EventLogEntity
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -17,12 +16,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.File
 import javax.inject.Inject
-import androidx.palette.graphics.Palette
-import android.graphics.Bitmap
-import android.graphics.drawable.BitmapDrawable
-import coil.ImageLoader
-import coil.request.ImageRequest
-import coil.request.SuccessResult
 import androidx.compose.ui.graphics.toArgb
 import android.graphics.Color as AndroidColor
 
@@ -30,10 +23,11 @@ import android.graphics.Color as AndroidColor
 class AppViewModel @Inject constructor(
     private val repo: UniversalRepository,
     private val playbackClient: PlaybackClient,
+    private val paletteExtractor: PaletteExtractor,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
     
-    enum class Screen { Library, Marketplace, Inbox }
+    enum class Screen { Library, Marketplace, Inbox, Queue }
 
     data class UiState(
         val navigationStack: List<Screen> = listOf(Screen.Library),
@@ -125,41 +119,14 @@ class AppViewModel @Inject constructor(
     fun dispatch(action: Action) {
         logAction(action) // Interceptor 1: Log
         
-        // Interceptor 2: Reduce (State)
+        updateState { AppReducer.reduce(it, action) }
+
         when(action) {
-            is Action.Navigate -> updateState { 
-                // Only push if different from current top
-                if (it.navigationStack.lastOrNull() != action.screen) {
-                    it.copy(navigationStack = it.navigationStack + action.screen)
-                } else it
-            }
-            is Action.Pop -> updateState { 
-                if (it.navigationStack.size > 1) {
-                    it.copy(navigationStack = it.navigationStack.dropLast(1))
-                } else it
-            }
-            is Action.SetPlayerOpen -> updateState { it.copy(isPlayerOpen = action.isOpen) }
-            is Action.SetFilter -> updateState { it.copy(activeFilter = action.filter) }
-            is Action.SetCarMode -> updateState { it.copy(isCarMode = action.enabled) }
-            is Action.Play -> updateState { it.copy(current = action.podcast, isPlayerOpen = true) }
-            is Action.Subscribe -> updateState {
-                val placeholder = PodcastEntity(
-                    id = "optimistic_${action.feedUrl.hashCode()}",
-                    title = action.title,
-                    episodeTitle = "Syncing feed...",
-                    description = "Requesting information from ${action.feedUrl}",
-                    imageUrl = action.imageUrl,
-                    audioUrl = "",
-                    feedUrl = action.feedUrl
-                )
-                it.copy(optimisticPodcasts = it.optimisticPodcasts + placeholder)
-            }
             is Action.Rollback -> {
                 travelTo(action.historyIndex)
                 emitEvent(UserEvent.ShowError("Rollback: ${action.error}"))
             }
-            // Playback actions don't mutate UI state directly (Reconciler does), but we pass them to Effect
-            else -> {} 
+            else -> {}
         }
 
         // Interceptor 3: Effects (Side Effects)
@@ -271,20 +238,9 @@ class AppViewModel @Inject constructor(
             }
         }
 
-        // Epochal Reconciler: Derived state from Facts + Core Data
+        // Epochal Reconciler: repository exposes fact-hydrated values.
         viewModelScope.launch {
-            combine(repo.library, repo.facts) { library, facts -> 
-                library to facts
-            }.collect { (library, allFacts) ->
-                val factMap = allFacts.groupBy { it.entityId }
-                
-                // Hydrate entire library
-                val hydratedLibrary = library.map { base ->
-                    val epFacts = factMap[base.id] ?: emptyList()
-                    com.example.alakey.domain.InformationModel.hydrate(base, epFacts)
-                }
-
-                // Derive Inbox and Queue from hydrated values (Simplicity: Single Source of Truth)
+            repo.library.collect { hydratedLibrary ->
                 val hydratedQueue = hydratedLibrary.filter { it.isInQueue }.sortedBy { it.queueOrder }
                 val hydratedInbox = hydratedLibrary.filter { !it.isInQueue && it.progress == 0L }
 
@@ -354,6 +310,10 @@ class AppViewModel @Inject constructor(
 
     fun resetSleepTimer() {
         playbackClient.resetSleepTimer()
+    }
+
+    fun cancelSleepTimer() {
+        playbackClient.cancelSleepTimer()
     }
 
     fun downloadEpisode(podcastId: String) {
@@ -461,40 +421,16 @@ class AppViewModel @Inject constructor(
                 return@launch
             }
 
-            // 2. Intelligence: Extract context from raw bits
-            try {
-                val loader = ImageLoader(context)
-                val request = ImageRequest.Builder(context)
-                    .data(url)
-                    .allowHardware(false) // Required for Palette
-                    .build()
-                
-                val result = loader.execute(request)
-                if (result is SuccessResult) {
-                    val bitmap = (result.drawable as? BitmapDrawable)?.bitmap
-                    if (bitmap != null) {
-                        val palette = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-                            Palette.from(bitmap).generate()
-                        }
-                        val dominant = palette.getDominantColor(AndroidColor.CYAN)
-                        val vibrant = palette.getVibrantColor(AndroidColor.CYAN)
-                        val muted = palette.getMutedColor(AndroidColor.GRAY)
-                        
-                        // Update UI
-                        updateState { it.copy(
-                            dominantColor = dominant,
-                            vibrantColor = vibrant,
-                            mutedColor = muted
-                        ) }
-                        
-                        // 3. Persistence: Write the fact back to the ledger
-                        if (currentPodcast != null) {
-                            repo.savePalette(currentPodcast.id, PodcastPalette(dominant, vibrant, muted))
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e("AppViewModel", "Color extraction failed", e)
+            val palette = paletteExtractor.extract(url)
+            if (palette != null) {
+                updateState { it.copy(
+                    dominantColor = palette.dominant,
+                    vibrantColor = palette.vibrant,
+                    mutedColor = palette.muted
+                ) }
+                if (currentPodcast != null) repo.savePalette(currentPodcast.id, palette)
+            } else {
+                Log.w("AppViewModel", "Color extraction failed for $url")
             }
         }
     }

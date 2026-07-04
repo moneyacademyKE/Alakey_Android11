@@ -14,6 +14,7 @@ object InformationModel {
     const val ATTR_IN_QUEUE = "episode.isInQueue"
     const val ATTR_QUEUE_ORDER = "episode.queueOrder"
     const val ATTR_LAST_PLAYED = "episode.lastPlayed"
+    const val ATTR_AUDIO_PATH = "episode.audioPath"
 
     /**
      * Hydrates a PodcastEntity with the latest known facts.
@@ -25,14 +26,16 @@ object InformationModel {
         var isInQueue = base.isInQueue
         var queueOrder = base.queueOrder
         var lastPlayed = base.lastPlayed
+        var audioUrl = base.audioUrl
 
-        facts.forEach { fact ->
+        facts.groupBy { it.attribute }.values.mapNotNull { it.maxByOrNull(FactEntity::tx) }.forEach { fact ->
             when (fact.attribute) {
                 ATTR_PROGRESS -> progress = fact.value.toLongOrNull() ?: progress
                 ATTR_DOWNLOADED -> isDownloaded = fact.value.toBoolean()
                 ATTR_IN_QUEUE -> isInQueue = fact.value.toBoolean()
                 ATTR_QUEUE_ORDER -> queueOrder = fact.value.toLongOrNull() ?: queueOrder
                 ATTR_LAST_PLAYED -> lastPlayed = fact.value.toLongOrNull() ?: lastPlayed
+                ATTR_AUDIO_PATH -> if (fact.value.isNotBlank()) audioUrl = fact.value
             }
         }
 
@@ -41,7 +44,8 @@ object InformationModel {
             isDownloaded = isDownloaded,
             isInQueue = isInQueue,
             queueOrder = queueOrder,
-            lastPlayed = lastPlayed
+            lastPlayed = lastPlayed,
+            audioUrl = audioUrl
         )
     }
 }

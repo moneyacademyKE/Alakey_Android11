@@ -32,8 +32,11 @@ For more details, see [ARCHITECTURE.md](ARCHITECTURE.md).
 ## 🚀 Getting Started
 
 1.  **Clone the Repo**: `git clone https://github.com/criticalinsight/Alakey_Android11.git`
-2.  **Open in Android Studio**: Ensure you have Arctic Fox or later.
-3.  **Build & Run**: Use a device or emulator running Android 11+ (API 30+).
+2.  **Install JDK 17**: Gradle and Android Gradle Plugin require a Java 17 runtime.
+3.  **Open in Android Studio**: Use a recent Android Studio release with Android API 36 support.
+4.  **Build & Run**: Use a device or emulator running Android 11+ (API 30+).
+
+For Homebrew-based command-line builds, use the environment variables in `.envrc.example` and set `sdk.dir=/opt/homebrew/share/android-commandlinetools` in the gitignored `local.properties` file.
 
 ## 🛠️ Development
 

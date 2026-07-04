@@ -14,8 +14,8 @@ android {
         applicationId = "com.example.alakey"
         minSdk = 30 
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "2.3.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     
@@ -105,7 +105,7 @@ tasks.register("jacocoTestReport", JacocoReport::class) {
     reports {
         xml.required.set(true)
         html.required.set(true)
-        html.outputLocation.set(file("${buildDir}/reports/jacoco/testDebugUnitTestReport/html"))
+        html.outputLocation.set(layout.buildDirectory.dir("reports/jacoco/testDebugUnitTestReport/html"))
     }
 
     val fileFilter = listOf(
@@ -113,7 +113,7 @@ tasks.register("jacocoTestReport", JacocoReport::class) {
         "**/*Test*.*", "android/**/*.*"
     )
     
-    val debugTree = fileTree("${project.buildDir}/tmp/kotlin-classes/debug") {
+    val debugTree = fileTree(layout.buildDirectory.dir("tmp/kotlin-classes/debug")) {
         exclude(fileFilter)
     }
     
@@ -121,5 +121,5 @@ tasks.register("jacocoTestReport", JacocoReport::class) {
 
     sourceDirectories.setFrom(files(mainSrc))
     classDirectories.setFrom(files(debugTree))
-    executionData.setFrom(files("${project.buildDir}/outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec"))
+    executionData.setFrom(files(layout.buildDirectory.file("outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec")))
 }

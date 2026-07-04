@@ -35,6 +35,30 @@ class InformationModelTest {
     }
 
     @Test
+    fun `hydrate applies latest facts regardless of input order`() {
+        val base = PodcastEntity(
+            id = "test-id",
+            title = "Test Podcast",
+            episodeTitle = "Original Title",
+            description = "Desc",
+            imageUrl = "url",
+            audioUrl = "audio"
+        )
+
+        val facts = listOf(
+            FactEntity("test-id", InformationModel.ATTR_PROGRESS, "10000", tx = 200),
+            FactEntity("test-id", InformationModel.ATTR_PROGRESS, "5000", tx = 100),
+            FactEntity("test-id", InformationModel.ATTR_IN_QUEUE, "false", tx = 150),
+            FactEntity("test-id", InformationModel.ATTR_IN_QUEUE, "true", tx = 300)
+        )
+
+        val hydrated = InformationModel.hydrate(base, facts)
+
+        assertEquals(10000L, hydrated.progress)
+        assertEquals(true, hydrated.isInQueue)
+    }
+
+    @Test
     fun `hydrate handles empty facts by returning base`() {
         val base = PodcastEntity(id = "test", title = "T", episodeTitle = "E", description = "D", imageUrl = "I", audioUrl = "A", progress = 123)
         val hydrated = InformationModel.hydrate(base, emptyList())
@@ -49,5 +73,19 @@ class InformationModelTest {
         )
         val hydrated = InformationModel.hydrate(base, facts)
         assertEquals(0L, hydrated.progress)
+    }
+
+    @Test
+    fun `hydrate uses fact audio path as downloaded playback source`() {
+        val base = PodcastEntity(id = "test", title = "T", episodeTitle = "E", description = "D", imageUrl = "I", audioUrl = "https://example.com/e.mp3")
+        val facts = listOf(
+            FactEntity("test", InformationModel.ATTR_AUDIO_PATH, "/files/test.mp3", tx = 100),
+            FactEntity("test", InformationModel.ATTR_DOWNLOADED, "true", tx = 100)
+        )
+
+        val hydrated = InformationModel.hydrate(base, facts)
+
+        assertEquals("/files/test.mp3", hydrated.audioUrl)
+        assertEquals(true, hydrated.isDownloaded)
     }
 }

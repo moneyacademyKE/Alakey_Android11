@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AddCircle
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
@@ -24,6 +25,8 @@ fun GlassMarketplace(
     onSubscribe: (String) -> Unit
 ) {
     var selectedTab by remember { mutableIntStateOf(0) } // 0 = Kenya, 1 = USA
+    var subscribingQuery by remember { mutableStateOf<String?>(null) }
+    val subscribedQueries = remember { mutableStateListOf<String>() }
     
     val kenyaItems = listOf(
         MarketItem("The 97s Podcast", "3MenArmy", "Podcast", "The 97s Podcast"),
@@ -104,8 +107,18 @@ fun GlassMarketplace(
                                 color = Color.White.copy(0.6f)
                             )
                         }
-                        IconButton(onClick = { onSubscribe(item.query) }) {
-                            Icon(Icons.Rounded.AddCircle, null, tint = Color.Cyan)
+                        val isSyncing = subscribingQuery == item.query
+                        val isSubscribed = item.query in subscribedQueries
+                        IconButton(onClick = {
+                            subscribingQuery = item.query
+                            subscribedQueries.add(item.query)
+                            onSubscribe(item.query)
+                        }) {
+                            when {
+                                isSyncing -> CircularProgressIndicator(color = Color.Cyan, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
+                                isSubscribed -> Icon(Icons.Rounded.CheckCircle, null, tint = Color(0xFF00E676))
+                                else -> Icon(Icons.Rounded.AddCircle, null, tint = Color.Cyan)
+                            }
                         }
                     }
                 }

@@ -45,12 +45,6 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
             
-        <receiver android:name=".debug.ReplReceiver" android:exported="true">
-            <intent-filter>
-                <action android:name="com.example.alakey.REPL_EVAL" />
-            </intent-filter>
-        </receiver>
-
         <provider
             android:name="androidx.startup.InitializationProvider"
             android:authorities="${applicationId}.androidx-startup"

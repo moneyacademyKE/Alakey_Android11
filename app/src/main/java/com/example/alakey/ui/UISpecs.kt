@@ -13,7 +13,8 @@ data class PodcastRowSpec(
     val imageUrl: String,
     val isDownloaded: Boolean = false,
     val isInQueue: Boolean = false,
-    val progress: Float = 0f // 0.0 - 1.0
+    val progress: Float = 0f, // 0.0 - 1.0
+    val isSyncing: Boolean = false
 )
 
 data class PlayerSpec(

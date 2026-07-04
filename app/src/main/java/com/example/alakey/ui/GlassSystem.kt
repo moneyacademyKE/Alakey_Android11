@@ -185,7 +185,7 @@ fun GlassPodcastRow(
 ) {
     var showMenu by remember { mutableStateOf(false) }
 
-    PrismaticGlass(Modifier.fillMaxWidth().padding(vertical = 4.dp).height(72.dp).glassShimmer()) {
+    PrismaticGlass(Modifier.fillMaxWidth().padding(vertical = 4.dp).height(88.dp).glassShimmer()) {
         Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
             Row(
                 Modifier
@@ -203,7 +203,14 @@ fun GlassPodcastRow(
                 Column(Modifier.weight(1f)) {
                     NebulaText(spec.title, MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
                     Spacer(Modifier.height(4.dp))
-                    Row { NebulaText(spec.subtitle, MaterialTheme.typography.bodySmall, glowColor = Color.Transparent) }
+                    Text(spec.subtitle, color = Color.White.copy(0.62f), style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                    Spacer(Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (spec.progress > 0f) StatusPill(if (spec.progress >= 0.95f) "Played" else "${(spec.progress * 100).roundToInt()}%", Color(0xFFFFB300))
+                        if (spec.isInQueue) StatusPill("Queued", Color(0xFFBD00FF))
+                        if (spec.isDownloaded) StatusPill("Offline", Color(0xFF00E676))
+                        if (spec.isSyncing) StatusPill("Syncing", Color(0xFF00F0FF))
+                    }
                 }
                 
                 DropdownMenu(
@@ -237,15 +244,28 @@ fun GlassPodcastRow(
             }
             
             Row(Modifier.padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (spec.isDownloaded) {
-                    Icon(Icons.Rounded.CheckCircle, null, tint = Color.Green.copy(0.6f), modifier = Modifier.size(16.dp).padding(8.dp))
-                } else {
-                    IconButton(onClick = onDownload) {
-                         Icon(Icons.Rounded.CloudDownload, null, tint = Color.White)
+                when {
+                    spec.isSyncing -> CircularProgressIndicator(color = Color.Cyan, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
+                    spec.isDownloaded -> Icon(Icons.Rounded.CheckCircle, null, tint = Color.Green.copy(0.75f), modifier = Modifier.size(24.dp))
+                    spec.isInQueue -> IconButton(onClick = onAddToQueue) {
+                        Icon(Icons.Rounded.PlaylistRemove, null, tint = Color(0xFFBD00FF))
+                    }
+                    spec.progress > 0f -> IconButton(onClick = onClick) {
+                        Icon(Icons.Rounded.PlayCircle, null, tint = Color(0xFFFFB300))
+                    }
+                    else -> IconButton(onClick = onDownload) {
+                        Icon(Icons.Rounded.CloudDownload, null, tint = Color.White)
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun StatusPill(text: String, color: Color) {
+    Box(Modifier.clip(CircleShape).background(color.copy(0.16f)).padding(horizontal = 7.dp, vertical = 2.dp)) {
+        Text(text, color = color, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -299,10 +319,19 @@ fun FluxPlayerContinuum(
                         Column(Modifier.weight(1f)) {
                             Text(spec.title, color = Color.White, fontWeight = FontWeight.Bold, maxLines = 1)
                             Text(spec.artist, color = Color.LightGray, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                            LinearProgressIndicator(
+                                progress = { (spec.currentMs.toFloat() / spec.durationMs.coerceAtLeast(1).toFloat()).coerceIn(0f, 1f) },
+                                modifier = Modifier.fillMaxWidth().padding(top = 6.dp).height(3.dp).clip(CircleShape),
+                                color = Color(spec.vibrantColor),
+                                trackColor = Color.White.copy(0.14f)
+                            )
+                        }
+                        if (spec.sleepTimerSeconds > 0) {
+                            Text("${spec.sleepTimerSeconds / 60}m", color = Color(0xFF00F0FF), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 8.dp))
                         }
                         MorphingPlayPauseButton(spec.isPlaying, { onTogglePlay() }, Modifier.size(40.dp))
                     }
-                    // Full Layout
+                } else {
                     Box(Modifier.graphicsLayer { this.alpha = (expansion - 0.5f) * 2f }) {
                         GlassPlayerMechanism(spec, 0f, onClose, onTogglePlay, onSeek, onSkip, onSetSpeed, onNext, onPrev, onSleepTimer)
                     }

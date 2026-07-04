@@ -10,10 +10,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.LibraryBooks
+import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Inbox
-import androidx.compose.material.icons.rounded.LibraryBooks
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
@@ -52,7 +53,7 @@ fun GlassDock(
         modifier
             .padding(bottom = 24.dp)
             .height(72.dp)
-            .width(280.dp) // Compact floating width
+            .width(336.dp) // Four compact destinations
     ) {
         // Glass Capsule
         Box(
@@ -71,29 +72,31 @@ fun GlassDock(
             verticalAlignment = Alignment.CenterVertically
         ) {
             DockItem(
-                icon = Icons.Rounded.LibraryBooks, 
-                label = "Library", 
+                icon = Icons.AutoMirrored.Rounded.LibraryBooks,
                 isSelected = currentScreen == AppViewModel.Screen.Library,
                 onClick = { onNavigate(AppViewModel.Screen.Library) }
             )
             DockItem(
                 icon = Icons.Rounded.Inbox, 
-                label = "Inbox", 
                 isSelected = currentScreen == AppViewModel.Screen.Inbox,
                 onClick = { onNavigate(AppViewModel.Screen.Inbox) }
             )
             DockItem(
                 icon = Icons.Rounded.Search, 
-                label = "Search", 
                 isSelected = currentScreen == AppViewModel.Screen.Marketplace,
                 onClick = { onNavigate(AppViewModel.Screen.Marketplace) }
+            )
+            DockItem(
+                icon = Icons.AutoMirrored.Rounded.QueueMusic,
+                isSelected = currentScreen == AppViewModel.Screen.Queue,
+                onClick = { onNavigate(AppViewModel.Screen.Queue) }
             )
         }
     }
 }
 
 @Composable
-private fun DockItem(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, isSelected: Boolean, onClick: () -> Unit) {
+private fun DockItem(icon: androidx.compose.ui.graphics.vector.ImageVector, isSelected: Boolean, onClick: () -> Unit) {
     val haptics = LocalHapticFeedback.current
     val color by animateColorAsState(targetValue = if (isSelected) Color(0xFF00F0FF) else Color.White.copy(0.4f), label = "color")
     val scale by animateFloatAsState(targetValue = if (isSelected) 1.2f else 1f, label = "scale")
@@ -213,7 +216,7 @@ fun SpotlightHero(
                     )
                     
                     // Queue Button
-                    IconButton(icon = androidx.compose.material.icons.Icons.Rounded.PlaylistAdd, onClick = onQueue)
+                    IconButton(icon = Icons.AutoMirrored.Rounded.PlaylistAdd, onClick = onQueue)
                 }
             }
         }
