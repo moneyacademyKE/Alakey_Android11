@@ -259,7 +259,15 @@ class AppViewModel @Inject constructor(
     fun downloadEpisode(episodeId: String) {
         dispatch(Action.SetDownloadOp(episodeId, AsyncOp.InFlight))
         viewModelScope.launch {
-            repo.downloadAudio(episodeId)
+            var lastPercent = -1
+            repo.downloadAudio(episodeId) { done, total ->
+                // Dispatch at whole-percent steps only: byte-level updates would churn the reducer ~16x/sec.
+                val percent = if (total != null && total > 0) (100 * done / total).toInt() else -1
+                if (percent != lastPercent) {
+                    lastPercent = percent
+                    dispatch(Action.SetDownloadOp(episodeId, AsyncOp.Progress(done, total)))
+                }
+            }
                 .onSuccess { dispatch(Action.SetDownloadOp(episodeId, AsyncOp.Done)) }
                 .onFailure { error ->
                     Log.e("AppViewModel", "Download failure for $episodeId", error)
