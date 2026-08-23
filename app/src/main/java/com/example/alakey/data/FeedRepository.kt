@@ -1,6 +1,7 @@
 package com.example.alakey.data
 
 import android.util.Log
+import androidx.annotation.VisibleForTesting
 import com.example.alakey.domain.NetworkLogic
 import com.example.alakey.system.DatabaseSystem
 import com.example.alakey.system.NetworkSystem
@@ -31,15 +32,19 @@ class FeedRepository @Inject constructor(
         }
     }
 
-    suspend fun subscribe(url: String): Result<Boolean> = networkCall.run {
-        val xmlContent = fetchValidFeed(url)
-        val items = RssParser.parse(xmlContent, url)
-        if (items.isEmpty()) throw Exception("No episodes found in feed")
+    // Single pass: feed fetch, parse, and insert are deterministic — retrying the whole
+    // pipeline on a parse failure just re-downloads the feed three times (observed on-device).
+    suspend fun subscribe(url: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        runCatching {
+            val xmlContent = fetchValidFeed(url)
+            val items = RssParser.parse(xmlContent, url)
+            if (items.isEmpty()) throw Exception("No episodes found in feed")
 
-        dao.insertEpisodes(items)
-        eventLogDao.logEvent(EventLogEntity(type = "SUBSCRIBE_SUCCESS", payload = url, status = "COMPLETED", timestamp = System.currentTimeMillis()))
-        Log.d("FeedRepository", "Subscribed to $url, ${items.size} items found.")
-        true
+            dao.insertEpisodes(items)
+            eventLogDao.logEvent(EventLogEntity(type = "SUBSCRIBE_SUCCESS", payload = url, status = "COMPLETED", timestamp = System.currentTimeMillis()))
+            Log.d("FeedRepository", "Subscribed to $url, ${items.size} items found.")
+            true
+        }
     }
 
     suspend fun syncAll() = syncMutex.withLock {
@@ -60,18 +65,28 @@ class FeedRepository @Inject constructor(
 
     private suspend fun fetchDirect(url: String): String = withContext(Dispatchers.IO) {
         client.newCall(Request.Builder().url(url).build()).execute().use { response ->
+            if (!response.isSuccessful) throw Exception("Feed fetch failed: ${response.code}")
             response.body?.string() ?: throw Exception("Empty response body")
         }
     }
 
     private suspend fun fetchWithProxy(url: String): String = withContext(Dispatchers.IO) {
         client.newCall(Request.Builder().url("https://api.allorigins.win/get?url=$url").build()).execute().use { response ->
+            if (!response.isSuccessful) throw Exception("Proxy fetch failed: ${response.code}")
             NetworkLogic.extractProxyContent(response.body?.string() ?: throw Exception("Empty proxy response"))
         }
     }
 
-    private fun String?.isValidXmlFeed(): Boolean {
-        val trimmed = this?.trim().orEmpty()
-        return trimmed.startsWith("<") && !trimmed.startsWith("<!DOCTYPE html", ignoreCase = true)
+    private fun String?.isValidXmlFeed(): Boolean = looksLikeFeed(this)
+
+    companion object {
+        @VisibleForTesting
+        internal fun looksLikeFeed(content: String?): Boolean {
+            val trimmed = content?.trim().orEmpty()
+            if (!trimmed.startsWith("<")) return false
+            val head = trimmed.take(64).lowercase()
+            // Error/block pages come as both "<!DOCTYPE html..." and bare "<html..."
+            return !head.startsWith("<!doctype html") && !head.startsWith("<html")
+        }
     }
 }
