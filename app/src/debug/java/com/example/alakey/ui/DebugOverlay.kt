@@ -24,7 +24,7 @@ fun DebugOverlay(
 
     var sliderValue by remember { mutableFloatStateOf(0f) }
     var showLogs by remember { mutableStateOf(false) }
-    
+
     // Sync slider to history size updates
     LaunchedEffect(historySize) {
         sliderValue = historySize.toFloat() - 1f
@@ -50,7 +50,7 @@ fun DebugOverlay(
                 )
                 Slider(
                     value = sliderValue,
-                    onValueChange = { 
+                    onValueChange = {
                         sliderValue = it
                         onTimeTravel(it.toInt())
                     },
@@ -60,17 +60,17 @@ fun DebugOverlay(
                         activeTrackColor = Color.Green.copy(0.5f)
                     )
                 )
-                
+
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                     TextButton(onClick = { showLogs = !showLogs }) { 
-                         Text("Toggle Logs", color = Color.White) 
+                     TextButton(onClick = { showLogs = !showLogs }) {
+                         Text("Toggle Logs", color = Color.White)
                      }
                 }
             }
         }
     }
-    
+
     if (showLogs) {
         Dialog(onDismissRequest = { showLogs = false }) {
              Card(

@@ -6,6 +6,14 @@ package com.example.alakey.ui
  * Components render Specs, not Entities.
  */
 
+sealed interface AsyncOp {
+    data object Idle : AsyncOp
+    data object InFlight : AsyncOp
+    data class Progress(val completedBytes: Long, val totalBytes: Long?) : AsyncOp
+    data object Done : AsyncOp
+    data class Failed(val message: String) : AsyncOp
+}
+
 data class PodcastRowSpec(
     val id: String,
     val title: String,
@@ -14,7 +22,8 @@ data class PodcastRowSpec(
     val isDownloaded: Boolean = false,
     val isInQueue: Boolean = false,
     val progress: Float = 0f, // 0.0 - 1.0
-    val isSyncing: Boolean = false
+    val isSyncing: Boolean = false,
+    val downloadOp: AsyncOp = AsyncOp.Idle
 )
 
 data class PlayerSpec(

@@ -28,5 +28,10 @@ data class PodcastEntity(
     val attributes: Map<String, String> = emptyMap()
 )
 
-data class ItunesSearchResult(val collectionName: String, val feedUrl: String, val artworkUrl100: String)
+data class ItunesSearchResult(
+    val collectionName: String,
+    val feedUrl: String,
+    val artworkUrl100: String,
+    val artistName: String = ""
+)
 data class ItunesSearchResponse(val results: List<ItunesSearchResult>)

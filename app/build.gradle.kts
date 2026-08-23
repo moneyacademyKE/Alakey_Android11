@@ -61,10 +61,6 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.androidx.palette.ktx)
     
-    // AI / TFLite
-    implementation(libs.tensorflow.lite)
-    implementation(libs.tensorflow.lite.support)
-    
     // Hilt
     implementation(libs.hilt.android)
     ksp(libs.hilt.android.compiler)
