@@ -41,15 +41,32 @@ class DownloadRepository @Inject constructor(
         val podcast = dao.getPodcastById(podcastId) ?: throw Exception("Podcast not found")
         if (podcast.audioUrl.isEmpty()) throw Exception("No audio URL")
 
-        client.newCall(Request.Builder().url(podcast.audioUrl).build()).execute().use { response ->
-            if (!response.isSuccessful) throw Exception("Download failed: ${response.code}")
+        val file = File(context.filesDir, "${podcastId.safeFileName()}.mp3")
+        val partial = if (file.exists()) file.length() else 0L
+        val request = Request.Builder().url(podcast.audioUrl).apply {
+            if (partial > 0) header("Range", "bytes=$partial-")
+        }.build()
 
-            val file = File(context.filesDir, "${podcastId.safeFileName()}.mp3")
-            val body = response.body ?: throw Exception("Empty response body")
-            body.byteStream().use { input -> FileOutputStream(file).use { output -> input.copyTo(output) } }
+        client.newCall(request).execute().use { response ->
+            when {
+                // 416: server says we already have the full range — download complete
+                response.code == 416 -> Unit
+                // 206: resume from the partial file, append the remaining bytes
+                response.code == 206 && partial > 0 -> copyBody(response, file, append = true)
+                // 200: server ignored the Range header — start over from byte 0
+                response.isSuccessful -> copyBody(response, file, append = false)
+                else -> throw Exception("Download failed: ${response.code}")
+            }
             factStore.assert(podcastId, InformationModel.ATTR_AUDIO_PATH, file.absolutePath)
             factStore.assert(podcastId, InformationModel.ATTR_DOWNLOADED, "true")
             file.absolutePath
+        }
+    }
+
+    private fun copyBody(response: okhttp3.Response, file: File, append: Boolean) {
+        val body = response.body ?: throw Exception("Empty response body")
+        body.byteStream().use { input ->
+            FileOutputStream(file, append).use { output -> input.copyTo(output) }
         }
     }
 
