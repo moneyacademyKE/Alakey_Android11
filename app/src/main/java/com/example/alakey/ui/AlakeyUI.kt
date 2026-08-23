@@ -61,6 +61,7 @@ fun MainContent() {
     val state by vm.uiState.collectAsState()
     val searchResults by vm.searchResults.collectAsState()
     val sleepTimerSeconds by vm.sleepTimerSeconds.collectAsState()
+    val sleepTimerTotalSeconds by vm.sleepTimerTotalSeconds.collectAsState()
     val sleepAtEnd by vm.sleepAtEpisodeEnd.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
     val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -134,7 +135,7 @@ fun MainContent() {
         }
         if (state.current != null && !state.isCarMode) {
             PlayerHost(
-                spec = state.toPlayerSpec(sleepTimerSeconds), expanded = state.isPlayerOpen, queueCount = state.queue.size,
+                spec = state.toPlayerSpec(sleepTimerSeconds, sleepTimerTotalSeconds), expanded = state.isPlayerOpen, queueCount = state.queue.size,
                 onOpen = { vm.setPlayerOpen(true) }, onClose = { vm.setPlayerOpen(false) }, onTogglePlay = vm::togglePlay,
                 onQueue = { vm.navigate(AppViewModel.Screen.Queue) }, onSeek = vm::seek, onSkip = vm::skip,
                 onSetSpeed = vm::setPlaybackSpeed, onNext = vm::playNextEpisode, onPrevious = vm::playPreviousEpisode,
@@ -196,7 +197,7 @@ private fun HeadsetResumeEffect(vm: AppViewModel) {
     }
 }
 
-private fun AppViewModel.UiState.toPlayerSpec(timer: Int) = PlayerSpec(
+private fun AppViewModel.UiState.toPlayerSpec(timer: Int, timerTotal: Int = 0) = PlayerSpec(
     title = current?.episodeTitle.orEmpty(),
     artist = current?.title.orEmpty(),
     imageUrl = current?.imageUrl.orEmpty(),
@@ -207,6 +208,7 @@ private fun AppViewModel.UiState.toPlayerSpec(timer: Int) = PlayerSpec(
     bufferedMs = bufferedMs,
     speed = speed,
     sleepTimerSeconds = timer,
+    sleepTimerTotalSeconds = timerTotal,
     chapters = chapters,
     currentChapterIndex = if (chapters.isEmpty()) -1 else chapters.indexOfLast { it.start <= currentTime },
     dominantColor = dominantColor,

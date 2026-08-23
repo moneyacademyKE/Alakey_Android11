@@ -71,6 +71,9 @@ class PlaybackClient @Inject constructor(
     // Sleep Timer
     private val _sleepTimerSeconds = MutableStateFlow(0)
     val sleepTimerSeconds: StateFlow<Int> = _sleepTimerSeconds.asStateFlow()
+    /** Duration the timer was armed with; 0 when disarmed. Lets UI render a drain fraction. */
+    private val _sleepTimerTotalSeconds = MutableStateFlow(0)
+    val sleepTimerTotalSeconds: StateFlow<Int> = _sleepTimerTotalSeconds.asStateFlow()
     private var sleepTimerJob: Job? = null
     private var initialSleepDuration = 0
 
@@ -316,6 +319,7 @@ class PlaybackClient @Inject constructor(
         _sleepAtEpisodeEnd.value = false
         initialSleepDuration = minutes * 60
         _sleepTimerSeconds.value = initialSleepDuration
+        _sleepTimerTotalSeconds.value = initialSleepDuration
         // Never force playback: a timer set while paused must stay paused.
 
         sleepTimerJob = scope.launch {
@@ -323,6 +327,7 @@ class PlaybackClient @Inject constructor(
                 delay(1000)
                 _sleepTimerSeconds.value--
             }
+            _sleepTimerTotalSeconds.value = 0
             pause()
         }
     }
@@ -333,6 +338,7 @@ class PlaybackClient @Inject constructor(
         _sleepAtEpisodeEnd.value = true
         val c = controller ?: return
         _sleepTimerSeconds.value = ((c.duration - c.currentPosition).coerceAtLeast(0) / 1000).toInt()
+        _sleepTimerTotalSeconds.value = _sleepTimerSeconds.value
     }
 
     fun resetSleepTimer() {
@@ -347,6 +353,7 @@ class PlaybackClient @Inject constructor(
         _sleepAtEpisodeEnd.value = false
         initialSleepDuration = 0
         _sleepTimerSeconds.value = 0
+        _sleepTimerTotalSeconds.value = 0
     }
 
     private fun persistedSpeed(): Float =

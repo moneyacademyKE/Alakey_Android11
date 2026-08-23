@@ -49,7 +49,7 @@ class UniversalRepository @Inject constructor(
     suspend fun markOlderAsPlayed(ref: PodcastEntity) = playback.markOlderAsPlayed(ref)
 
     suspend fun runSmartDownloads() = downloads.runSmartDownloads()
-    suspend fun downloadAudio(podcastId: String) = downloads.downloadAudio(podcastId)
+    suspend fun downloadAudio(podcastId: String, onProgress: (Long, Long?) -> Unit = { _, _ -> }) = downloads.downloadAudio(podcastId, onProgress)
     suspend fun deleteDownload(id: String) = downloads.deleteDownload(id)
 
     suspend fun assertFact(entityId: String, attribute: String, value: String) = factsStore.assert(entityId, attribute, value)

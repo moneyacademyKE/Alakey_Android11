@@ -181,7 +181,18 @@ private fun PlayerArtwork(spec: PlayerSpec, modifier: Modifier) {
         AsyncImage(spec.imageUrl, "Episode artwork", Modifier.fillMaxSize(.84f).aspectRatio(1f).clip(RoundedCornerShape(28.dp)), contentScale = ContentScale.Crop)
         if (spec.sleepTimerSeconds > 0) {
             Surface(color = Color.Black.copy(.75f), shape = CircleShape, modifier = Modifier.align(Alignment.TopEnd)) {
-                Text(formatMs(spec.sleepTimerSeconds * 1000L), color = Color.White, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                    if (spec.sleepTimerTotalSeconds > 0) {
+                        ProgressRing(
+                            fraction = spec.sleepTimerSeconds.toFloat() / spec.sleepTimerTotalSeconds,
+                            color = Color(0xFFFFB300),
+                            modifier = Modifier.size(14.dp),
+                            strokeWidth = 2f
+                        )
+                        Spacer(Modifier.width(6.dp))
+                    }
+                    Text(formatMs(spec.sleepTimerSeconds * 1000L), color = Color.White)
+                }
             }
         }
     }
@@ -203,8 +214,33 @@ private fun PlayerDetails(spec: PlayerSpec, onToggle: () -> Unit, onSeek: (Long)
         }
         Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
             SpeedMenuButton(spec.speed, onSetSpeed)
-            PlayerIconButton(Icons.Rounded.Timer, "Sleep timer", onSleepTimer)
+            SleepTimerButton(spec.sleepTimerSeconds, spec.sleepTimerTotalSeconds, onSleepTimer)
         }
+    }
+}
+
+/** Timer button that shows a drain ring + remaining seconds once armed. */
+@Composable
+private fun SleepTimerButton(remainingSeconds: Int, totalSeconds: Int, onClick: () -> Unit) {
+    val view = LocalView.current
+    val interaction = remember { MutableInteractionSource() }
+    val active = remainingSeconds > 0
+    Box(contentAlignment = Alignment.Center) {
+        if (active && totalSeconds > 0) {
+            ProgressRing(
+                fraction = remainingSeconds.toFloat() / totalSeconds,
+                color = Color(0xFFFFB300),
+                modifier = Modifier.size(44.dp),
+                strokeWidth = 2.5f
+            )
+        }
+        IconButton(
+            onClick = { Haptics.confirm(view); onClick() },
+            modifier = Modifier.size(48.dp).pressScale(interaction).semantics {
+                contentDescription = if (active) "Sleep timer, ${formatMs(remainingSeconds * 1000L)} remaining" else "Sleep timer"
+            },
+            interactionSource = interaction
+        ) { Icon(Icons.Rounded.Timer, null, tint = if (active) Color(0xFFFFB300) else Color.White) }
     }
 }
 

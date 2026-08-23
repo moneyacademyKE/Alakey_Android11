@@ -19,6 +19,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
@@ -71,6 +72,19 @@ fun PrismaticGlass(modifier: Modifier = Modifier, shape: RoundedCornerShape = Ro
         val spectrum = Brush.sweepGradient(listOf(Color.Cyan.copy(.6f), Color(0xFFBD00FF).copy(.6f), Color.Yellow.copy(.4f), Color.Cyan.copy(.6f)))
         onDrawWithContent { drawContent(); drawPath(path, spectrum, style = Stroke(1.2.dp.toPx())) }
     }, content = content)
+}
+
+/** Determinate progress ring — the shared "state you can watch" primitive (download fill, timer drain). */
+@Composable
+fun ProgressRing(fraction: Float, modifier: Modifier = Modifier, color: Color = Color.Cyan, trackAlpha: Float = .2f, strokeWidth: Float = 3f) {
+    val sweep = (fraction.coerceIn(0f, 1f)) * 360f
+    Canvas(modifier) {
+        val stroke = strokeWidth * density
+        val inset = stroke / 2
+        val arcSize = Size(size.width - stroke, size.height - stroke)
+        drawCircle(color.copy(alpha = trackAlpha), radius = (size.minDimension - stroke) / 2, center = center, style = Stroke(stroke / 2))
+        if (sweep > 0f) drawArc(color, -90f, sweep, false, Offset(inset, inset), arcSize, style = Stroke(width = stroke, cap = StrokeCap.Round))
+    }
 }
 
 @Composable

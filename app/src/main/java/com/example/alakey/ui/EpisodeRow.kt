@@ -85,6 +85,13 @@ fun GlassPodcastRow(
 @Composable
 private fun EpisodeTrailingAction(spec: PodcastRowSpec, onClick: () -> Unit, onDownload: () -> Unit, onAddToQueue: () -> Unit) {
     when {
+        spec.downloadOp is AsyncOp.Progress && spec.downloadOp.totalBytes != null && spec.downloadOp.totalBytes > 0 -> {
+            val fraction = (spec.downloadOp.completedBytes.toFloat() / spec.downloadOp.totalBytes).coerceIn(0f, 1f)
+            Box(Modifier.padding(12.dp).size(40.dp), Alignment.Center) {
+                ProgressRing(fraction = fraction, color = Color.Cyan, modifier = Modifier.size(32.dp), strokeWidth = 2.5f)
+                Text("${(fraction * 100).roundToInt()}", color = Color.White, style = MaterialTheme.typography.labelSmall, modifier = Modifier.semantics { contentDescription = "Downloading, ${(fraction * 100).roundToInt()} percent" })
+            }
+        }
         spec.downloadOp is AsyncOp.InFlight || spec.downloadOp is AsyncOp.Progress || spec.isSyncing -> CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.padding(12.dp).size(24.dp))
         spec.downloadOp is AsyncOp.Failed -> IconButton(onClick = onDownload, modifier = Modifier.size(48.dp)) { Icon(Icons.Rounded.ErrorOutline, "Retry download", tint = MaterialTheme.colorScheme.error) }
         spec.isDownloaded -> Icon(Icons.Rounded.CheckCircle, "Downloaded", tint = Color.Green.copy(.75f), modifier = Modifier.padding(12.dp).size(24.dp))

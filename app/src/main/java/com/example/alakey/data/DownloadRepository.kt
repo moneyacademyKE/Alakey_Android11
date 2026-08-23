@@ -37,7 +37,8 @@ class DownloadRepository @Inject constructor(
         }
     }
 
-    suspend fun downloadAudio(podcastId: String): Result<String> = networkCall.run {
+    /** Streams bytes, invoking [onProgress] with (bytesOnDisk, totalBytes-or-null) per buffer flush. */
+    suspend fun downloadAudio(podcastId: String, onProgress: (Long, Long?) -> Unit = { _, _ -> }): Result<String> = networkCall.run {
         val podcast = dao.getPodcastById(podcastId) ?: throw Exception("Podcast not found")
         if (podcast.audioUrl.isEmpty()) throw Exception("No audio URL")
 
@@ -52,9 +53,9 @@ class DownloadRepository @Inject constructor(
                 // 416: server says we already have the full range — download complete
                 response.code == 416 -> Unit
                 // 206: resume from the partial file, append the remaining bytes
-                response.code == 206 && partial > 0 -> copyBody(response, file, append = true)
+                response.code == 206 && partial > 0 -> copyBody(response, file, append = true, offset = partial, onProgress = onProgress)
                 // 200: server ignored the Range header — start over from byte 0
-                response.isSuccessful -> copyBody(response, file, append = false)
+                response.isSuccessful -> copyBody(response, file, append = false, offset = 0L, onProgress = onProgress)
                 else -> throw Exception("Download failed: ${response.code}")
             }
             factStore.assert(podcastId, InformationModel.ATTR_AUDIO_PATH, file.absolutePath)
@@ -63,10 +64,24 @@ class DownloadRepository @Inject constructor(
         }
     }
 
-    private fun copyBody(response: okhttp3.Response, file: File, append: Boolean) {
+    private fun copyBody(response: okhttp3.Response, file: File, append: Boolean, offset: Long = 0L, onProgress: (Long, Long?) -> Unit = { _, _ -> }) {
         val body = response.body ?: throw Exception("Empty response body")
+        val length = body.contentLength().takeIf { it > 0 }
+        val total = length?.plus(offset)
         body.byteStream().use { input ->
-            FileOutputStream(file, append).use { output -> input.copyTo(output) }
+            FileOutputStream(file, append).use { output ->
+                val buffer = ByteArray(64 * 1024)
+                var copied = offset
+                onProgress(copied, total)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read == -1) break
+                    output.write(buffer, 0, read)
+                    copied += read
+                    onProgress(copied, total)
+                }
+                output.flush()
+            }
         }
     }
 
