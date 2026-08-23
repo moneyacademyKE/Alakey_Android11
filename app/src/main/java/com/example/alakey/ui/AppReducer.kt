@@ -16,6 +16,9 @@ object AppReducer {
         is AppViewModel.Action.SetFilter -> state.copy(activeFilter = action.filter)
         is AppViewModel.Action.SetCarMode -> state.copy(isCarMode = action.enabled)
         is AppViewModel.Action.Play -> state.copy(current = action.podcast, isPlayerOpen = true)
+        // Same state shape as Play; the difference is intent — handled in effects,
+        // where Restore prepares the player paused instead of playing (#49).
+        is AppViewModel.Action.Restore -> state.copy(current = action.podcast, isPlayerOpen = true)
         is AppViewModel.Action.Subscribe -> state.copy(
             optimisticPodcasts = state.optimisticPodcasts.filterNot { it.feedUrl == action.feedUrl } + optimisticPodcast(action)
         )

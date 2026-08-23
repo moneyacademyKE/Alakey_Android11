@@ -40,6 +40,13 @@ class AppReducerTest {
         assertEquals(AsyncOp.Failed("offline"), download.downloadOps["episode"])
     }
 
+    @Test fun `restore opens player at episode but never marks playing`() {
+        val state = AppReducer.reduce(AppViewModel.UiState(), AppViewModel.Action.Restore(episode("resume-me").apply { progress = 42_000 }))
+        assertEquals("resume-me", state.current?.id)
+        assertTrue(state.isPlayerOpen)
+        assertFalse(state.isPlaying) // #49: restore is data; playing is intent
+    }
+
     private fun episode(id: String, progress: Long = 0, duration: Long = 100, pubDate: String = "") =
         PodcastEntity(id, "Show", "Episode $id", "Desc", "image", "audio", duration = duration, pubDate = pubDate).apply { this.progress = progress }
 }

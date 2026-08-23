@@ -228,8 +228,10 @@ class PlaybackClient @Inject constructor(
     /**
      * Play [podcast] as part of [queue]'s playlist (gapless advance, notification
      * next/prev). Restores saved position when resuming a started episode.
+     * With autoplay = false the player is prepared at the saved position but
+     * stays paused — restoring is data; playing is user intent (#49).
      */
-    fun play(podcast: PodcastEntity, queue: List<PodcastEntity> = emptyList()) {
+    fun play(podcast: PodcastEntity, queue: List<PodcastEntity> = emptyList(), autoplay: Boolean = true) {
         val queueItems = queue.filter { it.audioUrl.isNotBlank() }
         val index = queueItems.indexOfFirst { it.id == podcast.id }
         val items: List<PodcastEntity>
@@ -247,7 +249,7 @@ class PlaybackClient @Inject constructor(
             c.setMediaItems(items.map(::mediaItemFor), startIndex, startPosition)
             c.prepare()
         }
-        _desiredState.update { it.copy(isPlaying = true, mediaItem = marker) }
+        _desiredState.update { it.copy(isPlaying = autoplay, mediaItem = marker) }
     }
 
     fun enqueue(podcast: PodcastEntity) {
