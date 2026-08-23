@@ -41,10 +41,7 @@
             </intent-filter>
         </service>
 
-        <service
-            android:name=".service.DownloadService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />
+
             
         <provider
             android:name="androidx.startup.InitializationProvider"
