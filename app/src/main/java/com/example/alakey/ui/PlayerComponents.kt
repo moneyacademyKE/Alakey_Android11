@@ -1,5 +1,6 @@
 package com.example.alakey.ui
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -11,6 +12,12 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.updateTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -20,6 +27,8 @@ import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -51,6 +60,9 @@ import kotlinx.coroutines.launch
 import java.util.Locale
 import kotlin.math.roundToInt
 
+/** Fine-grained playback speeds; persisted across restarts. */
+val SPEED_STEPS = listOf(.5f, .8f, 1f, 1.1f, 1.2f, 1.5f, 1.6f, 2f, 2.5f, 3f)
+
 @Composable
 fun PlayerHost(
     spec: PlayerSpec,
@@ -68,15 +80,32 @@ fun PlayerHost(
     onSleepTimer: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    if (expanded) {
-        PlayerScreen(spec, onClose, onTogglePlay, onSeek, onSkip, onSetSpeed, onNext, onPrevious, onSleepTimer, modifier.fillMaxSize())
-    } else {
-        MiniPlayer(spec, queueCount, onOpen, onTogglePlay, onQueue, modifier.padding(bottom = 92.dp, start = 16.dp, end = 16.dp))
+    // D2: spring slide/scale between mini and full player; interruptible by nature.
+    AnimatedContent(
+        targetState = expanded,
+        transitionSpec = {
+            if (targetState) {
+                (slideInVertically(spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow)) { it } +
+                    fadeIn(tween(220))).togetherWith(
+                    slideOutVertically(tween(200)) { it / 3 } + fadeOut(tween(160)))
+            } else {
+                (fadeIn(tween(220)) + scaleIn(initialScale = .94f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow))).togetherWith(
+                    fadeOut(tween(160)))
+            }
+        },
+        label = "player_transition",
+        modifier = modifier
+    ) { isExpanded ->
+        if (isExpanded) {
+            PlayerScreen(spec, onClose, onTogglePlay, onSeek, onSkip, onSetSpeed, onNext, onPrevious, onSleepTimer, Modifier.fillMaxSize())
+        } else {
+            MiniPlayer(spec, queueCount, onOpen, onTogglePlay, onQueue, onSkip, Modifier.padding(bottom = 92.dp, start = 16.dp, end = 16.dp))
+        }
     }
 }
 
 @Composable
-private fun MiniPlayer(spec: PlayerSpec, queueCount: Int, onOpen: () -> Unit, onToggle: () -> Unit, onQueue: () -> Unit, modifier: Modifier) {
+private fun MiniPlayer(spec: PlayerSpec, queueCount: Int, onOpen: () -> Unit, onToggle: () -> Unit, onQueue: () -> Unit, onSkip: (Int) -> Unit, modifier: Modifier) {
     PrismaticGlass(modifier.fillMaxWidth().heightIn(min = 76.dp), RoundedCornerShape(24.dp)) {
         Row(Modifier.fillMaxSize().clickable(onClick = onOpen).semantics { contentDescription = "Open player for ${spec.title}" }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
             AsyncImage(spec.imageUrl, null, Modifier.size(56.dp).clip(RoundedCornerShape(16.dp)), contentScale = ContentScale.Crop)
@@ -86,12 +115,19 @@ private fun MiniPlayer(spec: PlayerSpec, queueCount: Int, onOpen: () -> Unit, on
                 Text(spec.artist, color = Color.White.copy(.58f), style = MaterialTheme.typography.bodySmall, maxLines = 1)
                 LinearProgressIndicator({ (spec.currentMs.toFloat() / spec.durationMs.coerceAtLeast(1)).coerceIn(0f, 1f) }, Modifier.fillMaxWidth().padding(top = 6.dp).height(3.dp), Color(spec.vibrantColor), Color.White.copy(.12f))
             }
+            MiniSkipButton(Icons.Rounded.Replay30, "Skip back 30 seconds") { onSkip(-PlayerTokens.SKIP_BACK_SECONDS) }
+            MiniSkipButton(Icons.Rounded.Forward30, "Skip forward 30 seconds") { onSkip(PlayerTokens.SKIP_FORWARD_SECONDS) }
             IconButton(onClick = onQueue, modifier = Modifier.size(48.dp)) {
                 BadgedBox({ if (queueCount > 0) Badge { Text(queueCount.toString()) } }) { Icon(Icons.AutoMirrored.Rounded.QueueMusic, "Open queue", tint = Color.White) }
             }
-            MorphingPlayPauseButton(spec.isPlaying, onToggle, Color.White, Modifier.size(48.dp).padding(10.dp))
+            MorphingPlayPauseButton(spec.isPlaying, spec.isBuffering, onToggle, Color.White, Modifier.size(48.dp).padding(10.dp))
         }
     }
+}
+
+@Composable
+private fun MiniSkipButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
+    IconButton(onClick, modifier = Modifier.size(40.dp)) { Icon(icon, label, tint = Color.White.copy(.85f), modifier = Modifier.size(22.dp)) }
 }
 
 @Composable
@@ -115,7 +151,7 @@ private fun PlayerScreen(
                 if (shouldDismissPlayer(offset.value, velocity)) onClose() else scope.launch { offset.animateTo(0f, spring()) }
             })
     ) {
-        FluxBackground(amplitude = spec.amplitude, color = Color(spec.dominantColor))
+        FluxBackground(color = Color(spec.dominantColor))
         val landscape = maxWidth > maxHeight
         if (landscape) {
             Row(Modifier.fillMaxSize().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -156,49 +192,97 @@ private fun PlayerDetails(spec: PlayerSpec, onToggle: () -> Unit, onSeek: (Long)
     Column(modifier.padding(horizontal = 12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         NebulaText(spec.title, MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold))
         Text(spec.artist, color = Color.White.copy(.7f), maxLines = 1)
-        PlayerScrubber(spec.currentMs, spec.durationMs, spec.vibrantColor, spec.isBuffering, onSeek)
+        PlayerScrubber(spec.currentMs, spec.bufferedMs, spec.durationMs, spec.vibrantColor, spec.isBuffering, onSeek)
+        if (spec.chapters.isNotEmpty()) ChapterRow(spec, onSeek)
         Row(Modifier.fillMaxWidth(), Arrangement.SpaceEvenly, Alignment.CenterVertically) {
             PlayerIconButton(Icons.Rounded.SkipPrevious, "Previous episode", onPrevious)
             PlayerIconButton(Icons.Rounded.Replay30, "Skip back 30 seconds") { onSkip(-PlayerTokens.SKIP_BACK_SECONDS) }
-            Box(Modifier.size(72.dp).background(Color.White, CircleShape), Alignment.Center) { MorphingPlayPauseButton(spec.isPlaying, onToggle, Color.Black, Modifier.size(56.dp).padding(14.dp), spec.isBuffering) }
+            Box(Modifier.size(72.dp).background(Color.White, CircleShape), Alignment.Center) { MorphingPlayPauseButton(spec.isPlaying, spec.isBuffering, onToggle, Color.Black, Modifier.size(56.dp).padding(14.dp)) }
             PlayerIconButton(Icons.Rounded.Forward30, "Skip forward 30 seconds") { onSkip(PlayerTokens.SKIP_FORWARD_SECONDS) }
             PlayerIconButton(Icons.Rounded.SkipNext, "Next episode", onNext)
         }
         Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-            val speedView = LocalView.current
-            val speedInteraction = remember { MutableInteractionSource() }
-            TextButton(
-                onClick = { Haptics.confirm(speedView); onSetSpeed(if (spec.speed >= 2f) .5f else spec.speed + .5f) },
-                interactionSource = speedInteraction,
-                modifier = Modifier.pressScale(speedInteraction, .97f)
-            ) { Text("${spec.speed}×", color = Color.White) }
+            SpeedMenuButton(spec.speed, onSetSpeed)
             PlayerIconButton(Icons.Rounded.Timer, "Sleep timer", onSleepTimer)
         }
     }
 }
 
 @Composable
-private fun PlayerScrubber(position: Long, duration: Long, vibrantColor: Int, isBuffering: Boolean, onCommit: (Long) -> Unit) {
+private fun ChapterRow(spec: PlayerSpec, onSeek: (Long) -> Unit) {
+    LazyRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        itemsIndexed(spec.chapters) { index, chapter ->
+            val active = index == spec.currentChapterIndex
+            Text(
+                chapter.title.ifBlank { formatMs(chapter.start) },
+                color = if (active) Color.Black else Color.White,
+                maxLines = 1,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(if (active) Color(spec.vibrantColor) else Color.White.copy(.12f))
+                    .clickable { onSeek(chapter.start) }
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .semantics { role = Role.Tab; contentDescription = "Chapter: ${chapter.title}" }
+            )
+        }
+    }
+}
+
+@Composable
+private fun SpeedMenuButton(speed: Float, onSetSpeed: (Float) -> Unit) {
+    val view = LocalView.current
+    val interaction = remember { MutableInteractionSource() }
+    var menuOpen by remember { mutableStateOf(false) }
+    Box {
+        TextButton(
+            onClick = { menuOpen = true },
+            interactionSource = interaction,
+            modifier = Modifier.pressScale(interaction, .97f)
+        ) { Text("${speed}×", color = Color.White) }
+        DropdownMenu(menuOpen, { menuOpen = false }) {
+            SPEED_STEPS.forEach { step ->
+                DropdownMenuItem(
+                    text = { Text(if (step == 1f) "1.0× (normal)" else "${step}×" + if (step == speed) " ✓" else "") },
+                    onClick = { Haptics.confirm(view); menuOpen = false; onSetSpeed(step) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlayerScrubber(position: Long, bufferedMs: Long, duration: Long, vibrantColor: Int, isBuffering: Boolean, onCommit: (Long) -> Unit) {
     val view = LocalView.current
     var local by remember { mutableStateOf<Float?>(null) }
     var lastTickBucket by remember { mutableIntStateOf(-1) }
     val interaction = remember { MutableInteractionSource() }
     val dragging by interaction.collectIsDraggedAsState()
     val grabScale by animateFloatAsState(if (dragging) 1.02f else 1f, spring(stiffness = Spring.StiffnessMedium), label = "scrub_grab")
-    Slider(
-        value = local ?: position.toFloat(),
-        onValueChange = { new ->
-            local = new
-            val bucket = (new / 30_000f).toInt()
-            if (bucket != lastTickBucket) { lastTickBucket = bucket; Haptics.tick(view) }
-        },
-        onValueChangeFinished = { local?.let { onCommit(it.toLong()) }; local = null; lastTickBucket = -1 },
-        valueRange = 0f..duration.coerceAtLeast(1).toFloat(),
-        enabled = !isBuffering,
-        interactionSource = interaction,
-        modifier = Modifier.fillMaxWidth().scale(grabScale),
-        colors = SliderDefaults.colors(activeTrackColor = Color(vibrantColor))
-    )
+    val safeDuration = duration.coerceAtLeast(1)
+    Box(Modifier.fillMaxWidth().scale(grabScale)) {
+        // Buffered-ahead indicator under the slider track.
+        Box(
+            Modifier
+                .align(Alignment.CenterStart)
+                .fillMaxWidth((bufferedMs.coerceIn(0, safeDuration).toFloat() / safeDuration))
+                .height(4.dp)
+                .background(Color.White.copy(.22f), RoundedCornerShape(2.dp))
+        )
+        Slider(
+            value = local ?: position.toFloat(),
+            onValueChange = { new ->
+                local = new
+                val bucket = (new / 30_000f).toInt()
+                if (bucket != lastTickBucket) { lastTickBucket = bucket; Haptics.tick(view) }
+            },
+            onValueChangeFinished = { local?.let { onCommit(it.toLong()) }; local = null; lastTickBucket = -1 },
+            valueRange = 0f..safeDuration.toFloat(),
+            enabled = !isBuffering,
+            interactionSource = interaction,
+            modifier = Modifier.fillMaxWidth(),
+            colors = SliderDefaults.colors(activeTrackColor = Color(vibrantColor))
+        )
+    }
     Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
         Text(formatMs((local ?: position.toFloat()).toLong()), color = Color.White.copy(.6f), style = MaterialTheme.typography.labelSmall)
         if (isBuffering) Text("Buffering…", color = Color.White.copy(.6f), style = MaterialTheme.typography.labelSmall)
@@ -227,7 +311,7 @@ fun formatMs(ms: Long): String {
 }
 
 @Composable
-fun MorphingPlayPauseButton(isPlaying: Boolean, onToggle: () -> Unit, tint: Color, modifier: Modifier = Modifier, isBuffering: Boolean = false) {
+fun MorphingPlayPauseButton(isPlaying: Boolean, isBuffering: Boolean, onToggle: () -> Unit, tint: Color, modifier: Modifier = Modifier) {
     val view = LocalView.current
     val interaction = remember { MutableInteractionSource() }
     val transition = updateTransition(isPlaying, label = "play_pause")
