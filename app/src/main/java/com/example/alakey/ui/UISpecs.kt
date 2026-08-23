@@ -40,6 +40,8 @@ data class PlayerSpec(
     val bufferedMs: Long = 0,
     val speed: Float = 1.0f,
     val sleepTimerSeconds: Int = 0,
+    /** Armed duration in seconds; 0 when disarmed. sleepTimerSeconds / this = drain fraction. */
+    val sleepTimerTotalSeconds: Int = 0,
     val chapters: List<Chapter> = emptyList(),
     val currentChapterIndex: Int = -1,
     val dominantColor: Int = 0xFF00FFFF.toInt(),

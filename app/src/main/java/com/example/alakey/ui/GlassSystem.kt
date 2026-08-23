@@ -79,11 +79,11 @@ fun PrismaticGlass(modifier: Modifier = Modifier, shape: RoundedCornerShape = Ro
 fun ProgressRing(fraction: Float, modifier: Modifier = Modifier, color: Color = Color.Cyan, trackAlpha: Float = .2f, strokeWidth: Float = 3f) {
     val sweep = (fraction.coerceIn(0f, 1f)) * 360f
     Canvas(modifier) {
-        val stroke = strokeWidth * density.density
+        val stroke = strokeWidth * density
         val inset = stroke / 2
-        val arc = Size(size.width - stroke, size.height - stroke)
-        drawCircle(color.copy(alpha = trackAlpha), stroke / 2, center = center, style = Stroke(stroke / 2))
-        if (sweep > 0f) drawArc(color, -90f, sweep, false, Offset(inset, inset), arc.size, style = Stroke(stroke, StrokeCap.Round))
+        val arcSize = Size(size.width - stroke, size.height - stroke)
+        drawCircle(color.copy(alpha = trackAlpha), radius = (size.minDimension - stroke) / 2, center = center, style = Stroke(stroke / 2))
+        if (sweep > 0f) drawArc(color, -90f, sweep, false, Offset(inset, inset), arcSize, style = Stroke(width = stroke, cap = StrokeCap.Round))
     }
 }
 

@@ -100,6 +100,7 @@ class AppViewModel @Inject constructor(
     private val _userEvents = MutableSharedFlow<UserEvent>()
     val userEvents: SharedFlow<UserEvent> = _userEvents.asSharedFlow()
     val sleepTimerSeconds: StateFlow<Int> = playbackClient.sleepTimerSeconds
+    val sleepTimerTotalSeconds: StateFlow<Int> = playbackClient.sleepTimerTotalSeconds
     val sleepAtEpisodeEnd: StateFlow<Boolean> = playbackClient.sleepAtEpisodeEnd
 
     private val _history = androidx.compose.runtime.mutableStateListOf<UiState>()
