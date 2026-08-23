@@ -2,6 +2,7 @@ package com.example.alakey.ui
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -249,13 +250,15 @@ private fun IconButton(
     isSelected: Boolean = false,
     onClick: () -> Unit
 ) {
+    val interaction = remember { MutableInteractionSource() }
     Box(
         Modifier
             .clip(CircleShape)
             .background(if (isSelected) Color(0xFF00F0FF).copy(0.2f) else Color.White.copy(0.1f))
             .border(1.dp, if (isSelected) Color(0xFF00F0FF).copy(0.4f) else Color.White.copy(0.1f), CircleShape)
             .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
-            .clickable { onClick() }
+            .pressScale(interaction)
+            .clickable(interactionSource = interaction, indication = LocalIndication.current) { onClick() }
             .semantics { contentDescription = icon.name; role = Role.Button }
             .padding(10.dp)
     ) {
