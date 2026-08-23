@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import android.widget.Toast
+import com.example.alakey.BuildConfig
 import com.example.alakey.data.UniversalRepository
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -14,10 +15,11 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * REPL-Driven Development Receiver.
- * Example ADB Command:
- * adb shell am broadcast -a com.example.alakey.REPL_EVAL -e cmd "refresh"
- * adb shell am broadcast -a com.example.alakey.REPL_EVAL -e cmd "subscribe https://feed.rss"
+ * REPL-Driven Development Receiver (DEBUG BUILDS ONLY — declared in src/debug/AndroidManifest.xml,
+ * so release APKs contain neither the receiver nor this class).
+ * Example ADB Command (explicit -n form — Android 16 drops implicit shell broadcasts):
+ * adb shell am broadcast -n com.example.alakey/.debug.ReplReceiver -a com.example.alakey.REPL_EVAL --es cmd "'subscribe https://feed.rss'"
+ * adb shell am broadcast -n com.example.alakey/.debug.ReplReceiver -a com.example.alakey.REPL_EVAL --es cmd "'download <episode-id>'"
  */
 @AndroidEntryPoint
 class ReplReceiver : BroadcastReceiver() {
@@ -28,6 +30,7 @@ class ReplReceiver : BroadcastReceiver() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     override fun onReceive(context: Context, intent: Intent) {
+        if (!BuildConfig.DEBUG) return  // dev REPL never runs in release builds
         if (intent.action == "com.example.alakey.REPL_EVAL") {
             val cmd = intent.getStringExtra("cmd") ?: return
             Log.d("REPL", "Received command: $cmd")
@@ -51,6 +54,14 @@ class ReplReceiver : BroadcastReceiver() {
                         if (url.isNotEmpty()) {
                             repository.subscribe(url)
                                 .onSuccess { Toast.makeText(context, "Subscribed!", Toast.LENGTH_SHORT).show() }
+                                .onFailure { Toast.makeText(context, "Failed: ${it.message}", Toast.LENGTH_LONG).show() }
+                        }
+                    }
+                    trimmedCmd.startsWith("download") -> {
+                        val id = trimmedCmd.substringAfter("download").trim()
+                        if (id.isNotEmpty()) {
+                            repository.downloadAudio(id)
+                                .onSuccess { Toast.makeText(context, "Downloaded: $it", Toast.LENGTH_LONG).show() }
                                 .onFailure { Toast.makeText(context, "Failed: ${it.message}", Toast.LENGTH_LONG).show() }
                         }
                     }

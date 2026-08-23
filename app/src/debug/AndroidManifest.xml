@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug-only REPL receiver: merged ONLY into debug builds.
+     Release APKs contain no REPL receiver and no REPL class at all.
+     exported=true here is debug-build-only so plain `adb shell am broadcast`
+     works on Android 16; onReceive() still guards with BuildConfig.DEBUG. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <receiver
+            android:name=".debug.ReplReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.example.alakey.REPL_EVAL" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>
