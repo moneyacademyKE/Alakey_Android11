@@ -22,6 +22,19 @@ interface FactDao {
     @Query("SELECT * FROM facts")
     suspend fun getAllFacts(): List<FactEntity>
 
+    /**
+     * Retention sweep: drop every superseded fact, keeping the latest tx per
+     * (entityId, attribute) — exactly the rows getLatestFacts/hydrate consume.
+     * Same-ms siblings are impossible (composite PK), so this is lossless.
+     */
+    @Query("""
+        DELETE FROM facts WHERE tx < (
+            SELECT MAX(f2.tx) FROM facts f2
+            WHERE f2.entityId = facts.entityId AND f2.attribute = facts.attribute
+        )
+    """)
+    suspend fun compact()
+
     @Query("""
         SELECT f1.* FROM facts f1
         INNER JOIN (

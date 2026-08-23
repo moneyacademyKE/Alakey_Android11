@@ -112,6 +112,8 @@ class AppViewModel @Inject constructor(
     private val chaptersCache = ConcurrentHashMap<String, List<Chapter>>()
 
     init {
+        // Facts are append-only; collapse superseded rows once per app open (#57).
+        viewModelScope.launch { repo.compactFacts() }
         viewModelScope.launch { playbackClient.playbackEnded.collect { playNextEpisode() } }
         viewModelScope.launch {
             repo.library.collect { library ->

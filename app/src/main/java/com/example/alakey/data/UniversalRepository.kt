@@ -53,6 +53,7 @@ class UniversalRepository @Inject constructor(
     suspend fun deleteDownload(id: String) = downloads.deleteDownload(id)
 
     suspend fun assertFact(entityId: String, attribute: String, value: String) = factsStore.assert(entityId, attribute, value)
+    suspend fun compactFacts() = factsStore.compact()
     suspend fun getFacts(entityId: String) = factsStore.getFacts(entityId)
     suspend fun getAttribute(entityId: String, attribute: String) = factsStore.getAttribute(entityId, attribute)
     suspend fun getAllFacts() = factsStore.getAllFacts()
