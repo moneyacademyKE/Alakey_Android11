@@ -27,6 +27,7 @@ class UniversalRepository @Inject constructor(
     }
 
     suspend fun searchPodcasts(query: String) = feeds.searchPodcasts(query)
+    suspend fun fetchChapters(url: String) = feeds.fetchChapters(url)
     suspend fun subscribe(url: String) = feeds.subscribe(url)
     suspend fun syncAll() = feeds.syncAll()
 

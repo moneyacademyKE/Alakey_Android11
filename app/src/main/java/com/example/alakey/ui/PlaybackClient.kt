@@ -13,11 +13,14 @@ import com.example.alakey.service.AudioService
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,9 +29,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import javax.inject.Inject
-import javax.inject.Singleton
 
+/**
+ * Single projection surface over the MediaSession player.
+ * The session IS the player: queue, position, and speed live in the controller;
+ * the UI only reduces events into state.
+ */
 @Singleton
 class PlaybackClient @Inject constructor(
     @ApplicationContext private val context: Context
@@ -38,9 +44,9 @@ class PlaybackClient @Inject constructor(
         val isBuffering: Boolean = false,
         val duration: Long = 1L,
         val currentPosition: Long = 0L,
-        val currentMediaId: String? = null, 
-        val playbackSpeed: Float = 1.0f,
-        val amplitude: Float = 0f
+        val bufferedPosition: Long = 0L,
+        val currentMediaId: String? = null,
+        val playbackSpeed: Float = 1.0f
     )
 
     data class DesiredState(
@@ -50,24 +56,27 @@ class PlaybackClient @Inject constructor(
         val playbackSpeed: Float = 1.0f
     )
 
+    private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
     private val _state = MutableStateFlow(PlaybackState())
     val state: StateFlow<PlaybackState> = _state.asStateFlow()
-    
-    private val _desiredState = MutableStateFlow(DesiredState())
+
+    private val _desiredState = MutableStateFlow(DesiredState(playbackSpeed = persistedSpeed()))
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var controller: MediaController? = null
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var progressJob: Job? = null
-    
+
     // Sleep Timer
     private val _sleepTimerSeconds = MutableStateFlow(0)
     val sleepTimerSeconds: StateFlow<Int> = _sleepTimerSeconds.asStateFlow()
     private var sleepTimerJob: Job? = null
-    private var initialSleepDuration: Int = 0
+    private var initialSleepDuration = 0
 
-    // Smart Resume
-    private var lastPauseTime: Long = 0
+    // Smart Resume: tracked at the listener so EVERY pause source counts
+    // (notification, headset, lockscreen — not just in-app taps).
+    private var lastPauseTime = 0L
 
     // Sleep-at-end-of-episode mode: pause when the current episode ends (no duration countdown).
     private val _sleepAtEpisodeEnd = MutableStateFlow(false)
@@ -88,26 +97,33 @@ class PlaybackClient @Inject constructor(
                 controller = controllerFuture?.get()
                 setupListener()
                 syncInitialState()
-                startReconciliationLoop() // Start the Driver
+                startReconciliationLoop()
             } catch (e: Exception) {
                 Log.e("PlaybackClient", "Failed to connect to MediaController", e)
             }
         }, MoreExecutors.directExecutor())
     }
 
-    private val _playbackEnded = kotlinx.coroutines.flow.MutableSharedFlow<Unit>()
-    val playbackEnded: kotlinx.coroutines.flow.SharedFlow<Unit> = _playbackEnded.asSharedFlow()
+    private val _playbackEnded = MutableSharedFlow<Unit>()
+    val playbackEnded: SharedFlow<Unit> = _playbackEnded.asSharedFlow()
 
     private fun setupListener() {
         controller?.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 processEvent(PlaybackEvent.IsPlayingChanged(isPlaying))
+                if (!isPlaying) lastPauseTime = System.currentTimeMillis()
                 if (isPlaying) startProgressPolling() else stopProgressPolling()
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
+                processEvent(PlaybackEvent.IsBufferingChanged(playbackState == Player.STATE_BUFFERING))
+                if (playbackState == Player.STATE_READY) {
+                    controller?.duration?.takeIf { it > 0 }?.let { duration ->
+                        processEvent(PlaybackEvent.MediaChanged(controller?.currentMediaItem?.mediaId, duration))
+                    }
+                }
                 if (playbackState == Player.STATE_ENDED) {
-                     scope.launch { _playbackEnded.emit(Unit) }
+                    scope.launch { _playbackEnded.emit(Unit) }
                 }
             }
 
@@ -119,16 +135,16 @@ class PlaybackClient @Inject constructor(
             }
         })
     }
-    
+
     // Pure Reduction
     private fun reduce(currentState: PlaybackState, event: PlaybackEvent): PlaybackState {
         return when (event) {
             is PlaybackEvent.IsPlayingChanged -> currentState.copy(isPlaying = event.isPlaying)
             is PlaybackEvent.IsBufferingChanged -> currentState.copy(isBuffering = event.isBuffering)
             is PlaybackEvent.PositionUpdated -> currentState.copy(
-                currentPosition = event.position, 
-                duration = if (event.duration > 0) event.duration else 1L, // Ensure non-zero
-                amplitude = event.amplitude
+                currentPosition = event.position,
+                duration = if (event.duration > 0) event.duration else 1L,
+                bufferedPosition = event.buffered
             )
             is PlaybackEvent.MediaChanged -> currentState.copy(
                 currentMediaId = event.mediaId,
@@ -137,20 +153,18 @@ class PlaybackClient @Inject constructor(
             is PlaybackEvent.SpeedChanged -> currentState.copy(playbackSpeed = event.speed)
         }
     }
-    
+
     private fun processEvent(event: PlaybackEvent) {
         _state.update { reduce(it, event) }
     }
 
     private fun syncInitialState() {
         controller?.let { c ->
-            // Batch initial sync? Or emit sequence?
-            // Let's just update directly or emit multiple events.
-            // Direct reducers for distinct properties.
             processEvent(PlaybackEvent.IsPlayingChanged(c.isPlaying))
+            processEvent(PlaybackEvent.IsBufferingChanged(c.playbackState == Player.STATE_BUFFERING))
             processEvent(PlaybackEvent.MediaChanged(c.currentMediaItem?.mediaId, c.duration.coerceAtLeast(1)))
             processEvent(PlaybackEvent.SpeedChanged(c.playbackParameters.speed))
-            
+            // Skip-silence applies service-side on player build + every READY (AudioSystem reads prefs).
             if (c.isPlaying) startProgressPolling()
         }
     }
@@ -158,16 +172,10 @@ class PlaybackClient @Inject constructor(
     private fun startProgressPolling() {
         progressJob?.cancel()
         progressJob = scope.launch {
-            var counter = 0f
             while (isActive) {
-                val pos = controller?.currentPosition ?: 0L
-                val dur = controller?.duration ?: 1L
-                val amp = if (controller?.isPlaying == true) {
-                    (Math.sin(counter.toDouble()).toFloat() * 0.2f + 0.8f) * (0.8f + Math.random().toFloat() * 0.4f)
-                } else 0f
-                processEvent(PlaybackEvent.PositionUpdated(pos, dur, amp))
-                counter += 0.5f
-                delay(100)
+                val c = controller ?: break
+                processEvent(PlaybackEvent.PositionUpdated(c.currentPosition, c.duration, c.bufferedPosition))
+                delay(POLL_MS)
             }
         }
     }
@@ -181,43 +189,28 @@ class PlaybackClient @Inject constructor(
     private fun startReconciliationLoop() {
         scope.launch {
             _desiredState.collect { desired ->
-                controller?.let { c ->
-                    reconcile(desired, c)
-                }
+                controller?.let { c -> reconcile(desired, c) }
             }
         }
     }
 
     private fun reconcile(desired: DesiredState, c: MediaController) {
-        // 1. Reconcile Media ID
-        if (desired.mediaItem != null && c.currentMediaItem?.mediaId != desired.mediaItem.mediaId) {
-             c.setMediaItem(desired.mediaItem)
-             c.prepare()
-        }
-        
-        // 2. Reconcile Seek
         if (desired.seekPosition != null) {
             c.seekTo(desired.seekPosition)
-            // Reset seek intent after consumption? Or treat as value? 
-            // Ideally we consume it. For simplicity in this demo, strict value updates.
-            _desiredState.update { it.copy(seekPosition = null) } 
+            _desiredState.update { it.copy(seekPosition = null) }
         }
-
-        // 3. Reconcile Play/Pause
         if (desired.isPlaying && !c.isPlaying) {
             c.play()
         } else if (!desired.isPlaying && c.isPlaying) {
             c.pause()
         }
-        
-        // 4. Reconcile Speed
         if (c.playbackParameters.speed != desired.playbackSpeed) {
             c.setPlaybackSpeed(desired.playbackSpeed)
         }
     }
 
-    fun play(podcast: PodcastEntity) {
-        val item = MediaItem.Builder()
+    private fun mediaItemFor(podcast: PodcastEntity): MediaItem =
+        MediaItem.Builder()
             .setMediaId(podcast.id)
             .setUri(podcast.audioUrl)
             .setMediaMetadata(
@@ -228,35 +221,70 @@ class PlaybackClient @Inject constructor(
                     .build()
             )
             .build()
-            
-        // Pure Intent Update
-        _desiredState.update { 
-            it.copy(isPlaying = true, mediaItem = item) 
+
+    /**
+     * Play [podcast] as part of [queue]'s playlist (gapless advance, notification
+     * next/prev). Restores saved position when resuming a started episode.
+     */
+    fun play(podcast: PodcastEntity, queue: List<PodcastEntity> = emptyList()) {
+        val queueItems = queue.filter { it.audioUrl.isNotBlank() }
+        val index = queueItems.indexOfFirst { it.id == podcast.id }
+        val items: List<PodcastEntity>
+        val startIndex: Int
+        if (index >= 0) {
+            items = queueItems
+            startIndex = index
+        } else {
+            items = listOf(podcast)
+            startIndex = 0
+        }
+        val startPosition = podcast.progress.takeIf { it > RESTORE_THRESHOLD_MS } ?: 0L
+        val marker = mediaItemFor(podcast)
+        controller?.let { c ->
+            c.setMediaItems(items.map(::mediaItemFor), startIndex, startPosition)
+            c.prepare()
+        }
+        _desiredState.update { it.copy(isPlaying = true, mediaItem = marker) }
+    }
+
+    fun enqueue(podcast: PodcastEntity) {
+        if (podcast.audioUrl.isNotBlank()) controller?.addMediaItem(mediaItemFor(podcast))
+    }
+
+    fun enqueueNext(podcast: PodcastEntity) {
+        val c = controller ?: return
+        if (podcast.audioUrl.isNotBlank()) c.addMediaItem(c.currentMediaItemIndex + 1, mediaItemFor(podcast))
+    }
+
+    fun dequeue(id: String) {
+        controller?.let { c ->
+            (0 until c.mediaItemCount)
+                .firstOrNull { c.getMediaItemAt(it).mediaId == id }
+                ?.let { c.removeMediaItem(it) }
         }
     }
 
+    fun playlistSize(): Int = controller?.mediaItemCount ?: 0
+
+    fun next() { controller?.seekToNextMediaItem() }
+    fun previous() { controller?.seekToPreviousMediaItem() }
+
     fun resume() {
-        // Smart Resume Logic should happen at intent time or in Reconciler?
-        // Intent time is simpler for now.
-        if (lastPauseTime > 0 && (System.currentTimeMillis() - lastPauseTime) > 5 * 60 * 1000) {
+        if (lastPauseTime > 0 && (System.currentTimeMillis() - lastPauseTime) > RESUME_REWIND_AFTER_MS) {
             val currentPos = controller?.currentPosition ?: 0L
-            val rewindPos = (currentPos - 3000).coerceAtLeast(0)
-             _desiredState.update { it.copy(seekPosition = rewindPos) }
-             Log.d("PlaybackClient", "Smart Resume: Rewind Intent Set")
+            _desiredState.update { it.copy(seekPosition = (currentPos - RESUME_REWIND_MS).coerceAtLeast(0)) }
+            Log.d("PlaybackClient", "Smart Resume: Rewind Intent Set")
         }
         lastPauseTime = 0
         _desiredState.update { it.copy(isPlaying = true) }
     }
 
     fun pause() {
-        lastPauseTime = System.currentTimeMillis()
         _desiredState.update { it.copy(isPlaying = false) }
     }
 
     fun togglePlay() {
-        // Toggle based on DESIRED state, not actual (debouncing)
-        val currentlyDesired = _desiredState.value.isPlaying
-        if (currentlyDesired) pause() else resume()
+        if (_desiredState.value.isPlaying) pause() else resume()
     }
 
     fun seek(ms: Long) {
@@ -269,15 +297,26 @@ class PlaybackClient @Inject constructor(
     }
 
     fun setSpeed(speed: Float) {
+        prefs.edit().putFloat(KEY_SPEED, speed).apply()
         _desiredState.update { it.copy(playbackSpeed = speed) }
     }
-    
+
+    fun setSkipSilence(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_SKIP_SILENCE, enabled).apply()
+        // Applied by AudioSystem at the next READY transition (controller cannot set it directly).
+    }
+
+    /** Takes effect on the next playback READY (enhancer attaches service-side). */
+    fun setBoost(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_BOOST, enabled).apply()
+    }
+
     fun startSleepTimer(minutes: Int) {
         sleepTimerJob?.cancel()
         _sleepAtEpisodeEnd.value = false
         initialSleepDuration = minutes * 60
         _sleepTimerSeconds.value = initialSleepDuration
-        resume()
+        // Never force playback: a timer set while paused must stay paused.
 
         sleepTimerJob = scope.launch {
             while (_sleepTimerSeconds.value > 0) {
@@ -285,7 +324,6 @@ class PlaybackClient @Inject constructor(
                 _sleepTimerSeconds.value--
             }
             pause()
-            // Reset volume if we were fading, but we're just pausing for now
         }
     }
 
@@ -310,10 +348,24 @@ class PlaybackClient @Inject constructor(
         initialSleepDuration = 0
         _sleepTimerSeconds.value = 0
     }
-    
+
+    private fun persistedSpeed(): Float =
+        prefs.getFloat(KEY_SPEED, 1.0f).takeIf { it > 0f } ?: 1f
+
     fun cleanup() {
         stopProgressPolling()
         sleepTimerJob?.cancel()
         controllerFuture?.let { MediaController.releaseFuture(it) }
+    }
+
+    private companion object {
+        const val PREFS = "playback_prefs"
+        const val KEY_SPEED = "speed"
+        const val KEY_SKIP_SILENCE = "skip_silence"
+        const val KEY_BOOST = "boost"
+        const val POLL_MS = 500L
+        const val RESTORE_THRESHOLD_MS = 10_000L
+        const val RESUME_REWIND_AFTER_MS = 5 * 60 * 1000L
+        const val RESUME_REWIND_MS = 3_000L
     }
 }
