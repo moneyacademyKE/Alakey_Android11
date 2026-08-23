@@ -31,6 +31,7 @@ data class PlayerSpec(
     val artist: String,
     val imageUrl: String,
     val isPlaying: Boolean,
+    val isBuffering: Boolean = false,
     val currentMs: Long,
     val durationMs: Long,
     val speed: Float = 1.0f,
@@ -39,4 +40,6 @@ data class PlayerSpec(
     val dominantColor: Int = 0xFF00FFFF.toInt(),
     val vibrantColor: Int = 0xFF00FFFF.toInt(),
     val mutedColor: Int = 0xFF808080.toInt()
+)
+dColor: Int = 0xFF808080.toInt()
 )

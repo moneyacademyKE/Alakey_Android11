@@ -193,7 +193,8 @@ private fun HeadsetResumeEffect(vm: AppViewModel) {
 
 private fun AppViewModel.UiState.toPlayerSpec(timer: Int) = PlayerSpec(
     current?.episodeTitle.orEmpty(), current?.title.orEmpty(), current?.imageUrl.orEmpty(), isPlaying,
-    currentTime, duration, speed, amplitude, timer, dominantColor, vibrantColor, mutedColor
+    currentTime, duration, speed, amplitude, timer, dominantColor, vibrantColor, mutedColor,
+    isBuffering = isBuffering
 )
 
 @Composable
@@ -261,8 +262,16 @@ private fun EpisodeList(episodes: List<PodcastEntity>, state: AppViewModel.UiSta
 
 @Composable
 private fun EpisodeRow(episode: PodcastEntity, state: AppViewModel.UiState, vm: AppViewModel) {
+    val progressFraction = if (episode.duration > 0) episode.progress.toFloat() / episode.duration else 0f
+    val remainingMs = if (progressFraction > 0f && progressFraction < .95f && episode.duration > episode.progress) {
+        val speed = if (episode.id == state.current?.id) state.speed else 1f
+        ((episode.duration - episode.progress) / speed).toLong()
+    } else 0L
     GlassPodcastRow(
-        PodcastRowSpec(episode.id, episode.episodeTitle, episode.title, episode.imageUrl, episode.isDownloaded, episode.isInQueue, if (episode.duration > 0) episode.progress.toFloat() / episode.duration else 0f, downloadOp = state.downloadOps[episode.id] ?: AsyncOp.Idle),
+        PodcastRowSpec(
+            episode.id, episode.episodeTitle, episode.title, episode.imageUrl, episode.isDownloaded, episode.isInQueue,
+            progressFraction, remainingMs, downloadOp = state.downloadOps[episode.id] ?: AsyncOp.Idle
+        ),
         { vm.play(episode) }, { vm.downloadEpisode(episode.id) },
         { if (episode.isInQueue) vm.removeFromQueue(episode) else vm.addToQueue(episode) },
         { vm.markPlayed(episode) }, { vm.markOlderPlayed(episode) }, { vm.deleteDownload(episode) }, { vm.playNext(episode) }

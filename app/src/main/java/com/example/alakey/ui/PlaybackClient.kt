@@ -35,6 +35,7 @@ class PlaybackClient @Inject constructor(
 ) {
     data class PlaybackState(
         val isPlaying: Boolean = false,
+        val isBuffering: Boolean = false,
         val duration: Long = 1L,
         val currentPosition: Long = 0L,
         val currentMediaId: String? = null, 
@@ -64,12 +65,19 @@ class PlaybackClient @Inject constructor(
     val sleepTimerSeconds: StateFlow<Int> = _sleepTimerSeconds.asStateFlow()
     private var sleepTimerJob: Job? = null
     private var initialSleepDuration: Int = 0
-    
+
     // Smart Resume
     private var lastPauseTime: Long = 0
 
+    // Sleep-at-end-of-episode mode: pause when the current episode ends (no duration countdown).
+    private val _sleepAtEpisodeEnd = MutableStateFlow(false)
+    val sleepAtEpisodeEnd: StateFlow<Boolean> = _sleepAtEpisodeEnd.asStateFlow()
+
     init {
         connect()
+        scope.launch {
+            playbackEnded.collect { if (_sleepAtEpisodeEnd.value) { _sleepAtEpisodeEnd.value = false; pause() } }
+        }
     }
 
     private fun connect() {
@@ -116,6 +124,7 @@ class PlaybackClient @Inject constructor(
     private fun reduce(currentState: PlaybackState, event: PlaybackEvent): PlaybackState {
         return when (event) {
             is PlaybackEvent.IsPlayingChanged -> currentState.copy(isPlaying = event.isPlaying)
+            is PlaybackEvent.IsBufferingChanged -> currentState.copy(isBuffering = event.isBuffering)
             is PlaybackEvent.PositionUpdated -> currentState.copy(
                 currentPosition = event.position, 
                 duration = if (event.duration > 0) event.duration else 1L, // Ensure non-zero
@@ -265,10 +274,11 @@ class PlaybackClient @Inject constructor(
     
     fun startSleepTimer(minutes: Int) {
         sleepTimerJob?.cancel()
+        _sleepAtEpisodeEnd.value = false
         initialSleepDuration = minutes * 60
         _sleepTimerSeconds.value = initialSleepDuration
         resume()
-        
+
         sleepTimerJob = scope.launch {
             while (_sleepTimerSeconds.value > 0) {
                 delay(1000)
@@ -278,8 +288,17 @@ class PlaybackClient @Inject constructor(
             // Reset volume if we were fading, but we're just pausing for now
         }
     }
-    
+
+    /** Pause when the current episode ends. Countdown display mirrors remaining episode time. */
+    fun startSleepTimerAtEnd() {
+        sleepTimerJob?.cancel()
+        _sleepAtEpisodeEnd.value = true
+        val c = controller ?: return
+        _sleepTimerSeconds.value = ((c.duration - c.currentPosition).coerceAtLeast(0) / 1000).toInt()
+    }
+
     fun resetSleepTimer() {
+        if (_sleepAtEpisodeEnd.value) return
         if (_sleepTimerSeconds.value > 0) {
             _sleepTimerSeconds.value = initialSleepDuration
         }
@@ -287,6 +306,7 @@ class PlaybackClient @Inject constructor(
 
     fun cancelSleepTimer() {
         sleepTimerJob?.cancel()
+        _sleepAtEpisodeEnd.value = false
         initialSleepDuration = 0
         _sleepTimerSeconds.value = 0
     }

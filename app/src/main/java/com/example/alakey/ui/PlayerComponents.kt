@@ -1,17 +1,24 @@
 package com.example.alakey.ui
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.updateTransition
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,11 +30,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -145,41 +156,65 @@ private fun PlayerDetails(spec: PlayerSpec, onToggle: () -> Unit, onSeek: (Long)
     Column(modifier.padding(horizontal = 12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         NebulaText(spec.title, MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold))
         Text(spec.artist, color = Color.White.copy(.7f), maxLines = 1)
-        PlayerScrubber(spec.currentMs, spec.durationMs, spec.vibrantColor, onSeek)
+        PlayerScrubber(spec.currentMs, spec.durationMs, spec.vibrantColor, spec.isBuffering, onSeek)
         Row(Modifier.fillMaxWidth(), Arrangement.SpaceEvenly, Alignment.CenterVertically) {
             PlayerIconButton(Icons.Rounded.SkipPrevious, "Previous episode", onPrevious)
             PlayerIconButton(Icons.Rounded.Replay30, "Skip back 30 seconds") { onSkip(-PlayerTokens.SKIP_BACK_SECONDS) }
-            Box(Modifier.size(72.dp).background(Color.White, CircleShape), Alignment.Center) { MorphingPlayPauseButton(spec.isPlaying, onToggle, Color.Black, Modifier.size(56.dp).padding(14.dp)) }
+            Box(Modifier.size(72.dp).background(Color.White, CircleShape), Alignment.Center) { MorphingPlayPauseButton(spec.isPlaying, onToggle, Color.Black, Modifier.size(56.dp).padding(14.dp), spec.isBuffering) }
             PlayerIconButton(Icons.Rounded.Forward30, "Skip forward 30 seconds") { onSkip(PlayerTokens.SKIP_FORWARD_SECONDS) }
             PlayerIconButton(Icons.Rounded.SkipNext, "Next episode", onNext)
         }
         Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-            TextButton(onClick = { onSetSpeed(if (spec.speed >= 2f) .5f else spec.speed + .5f) }) { Text("${spec.speed}×", color = Color.White) }
+            val speedView = LocalView.current
+            val speedInteraction = remember { MutableInteractionSource() }
+            TextButton(
+                onClick = { Haptics.confirm(speedView); onSetSpeed(if (spec.speed >= 2f) .5f else spec.speed + .5f) },
+                interactionSource = speedInteraction,
+                modifier = Modifier.pressScale(speedInteraction, .97f)
+            ) { Text("${spec.speed}×", color = Color.White) }
             PlayerIconButton(Icons.Rounded.Timer, "Sleep timer", onSleepTimer)
         }
     }
 }
 
 @Composable
-private fun PlayerScrubber(position: Long, duration: Long, vibrantColor: Int, onCommit: (Long) -> Unit) {
+private fun PlayerScrubber(position: Long, duration: Long, vibrantColor: Int, isBuffering: Boolean, onCommit: (Long) -> Unit) {
+    val view = LocalView.current
     var local by remember { mutableStateOf<Float?>(null) }
+    var lastTickBucket by remember { mutableIntStateOf(-1) }
+    val interaction = remember { MutableInteractionSource() }
+    val dragging by interaction.collectIsDraggedAsState()
+    val grabScale by animateFloatAsState(if (dragging) 1.02f else 1f, spring(stiffness = Spring.StiffnessMedium), label = "scrub_grab")
     Slider(
         value = local ?: position.toFloat(),
-        onValueChange = { local = it },
-        onValueChangeFinished = { local?.let { onCommit(it.toLong()) }; local = null },
+        onValueChange = { new ->
+            local = new
+            val bucket = (new / 30_000f).toInt()
+            if (bucket != lastTickBucket) { lastTickBucket = bucket; Haptics.tick(view) }
+        },
+        onValueChangeFinished = { local?.let { onCommit(it.toLong()) }; local = null; lastTickBucket = -1 },
         valueRange = 0f..duration.coerceAtLeast(1).toFloat(),
-        modifier = Modifier.fillMaxWidth(),
+        enabled = !isBuffering,
+        interactionSource = interaction,
+        modifier = Modifier.fillMaxWidth().scale(grabScale),
         colors = SliderDefaults.colors(activeTrackColor = Color(vibrantColor))
     )
     Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
         Text(formatMs((local ?: position.toFloat()).toLong()), color = Color.White.copy(.6f), style = MaterialTheme.typography.labelSmall)
-        Text(formatMs(duration), color = Color.White.copy(.6f), style = MaterialTheme.typography.labelSmall)
+        if (isBuffering) Text("Buffering…", color = Color.White.copy(.6f), style = MaterialTheme.typography.labelSmall)
+        else Text(formatMs(duration), color = Color.White.copy(.6f), style = MaterialTheme.typography.labelSmall)
     }
 }
 
 @Composable
 private fun PlayerIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
-    IconButton(onClick, Modifier.size(48.dp)) { Icon(icon, label, tint = Color.White) }
+    val view = LocalView.current
+    val interaction = remember { MutableInteractionSource() }
+    IconButton(
+        onClick = { Haptics.confirm(view); onClick() },
+        modifier = Modifier.size(48.dp).pressScale(interaction),
+        interactionSource = interaction
+    ) { Icon(icon, label, tint = Color.White) }
 }
 
 fun formatMs(ms: Long): String {
@@ -192,15 +227,35 @@ fun formatMs(ms: Long): String {
 }
 
 @Composable
-fun MorphingPlayPauseButton(isPlaying: Boolean, onToggle: () -> Unit, tint: Color, modifier: Modifier = Modifier) {
+fun MorphingPlayPauseButton(isPlaying: Boolean, onToggle: () -> Unit, tint: Color, modifier: Modifier = Modifier, isBuffering: Boolean = false) {
+    val view = LocalView.current
+    val interaction = remember { MutableInteractionSource() }
     val transition = updateTransition(isPlaying, label = "play_pause")
     val t by transition.animateFloat({ tween(180, easing = FastOutSlowInEasing) }, label = "progress") { if (it) 1f else 0f }
+    val bufferingAlpha by animateFloatAsState(if (isBuffering) 1f else 0f, tween(180), label = "buffering_alpha")
+    val spin = rememberInfiniteTransition(label = "buffering_spin")
+    val sweep by spin.animateFloat(0f, 360f, infiniteRepeatable(tween(900, easing = LinearEasing)), label = "sweep")
     val path = remember { Path() }
-    Canvas(modifier.clickable(onClick = onToggle).semantics { role = Role.Button; stateDescription = if (isPlaying) "Playing" else "Paused" }) {
+    Canvas(modifier.pressScale(interaction).clickable(interactionSource = interaction, indication = null) {
+        Haptics.confirm(view); onToggle()
+    }.semantics { role = Role.Button; stateDescription = when { isBuffering -> "Buffering"; isPlaying -> "Playing"; else -> "Paused" } }) {
         val barWidth = size.width * .3f
         path.reset(); path.moveTo(0f, 0f); path.lineTo(lerp(size.width, barWidth, t), lerp(size.height / 2f, 0f, t)); path.lineTo(lerp(size.width, barWidth, t), lerp(size.height / 2f, size.height, t)); path.lineTo(0f, size.height); path.close()
-        drawPath(path, tint)
-        if (t > 0f) drawRect(tint, Offset(size.width - barWidth, 0f), Size(barWidth, size.height), alpha = t)
+        drawPath(path, tint, alpha = 1f - bufferingAlpha)
+        if (t > 0f) drawRect(tint, Offset(size.width - barWidth, 0f), Size(barWidth, size.height), alpha = t * (1f - bufferingAlpha))
+        if (bufferingAlpha > 0f) {
+            val stroke = size.width * .14f
+            drawArc(
+                color = tint,
+                startAngle = sweep,
+                sweepAngle = 270f,
+                useCenter = false,
+                topLeft = Offset(stroke, stroke),
+                size = Size(size.width - 2 * stroke, size.height - 2 * stroke),
+                style = Stroke(width = stroke, cap = StrokeCap.Round),
+                alpha = bufferingAlpha
+            )
+        }
     }
 }
 

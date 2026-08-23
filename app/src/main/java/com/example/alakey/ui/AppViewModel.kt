@@ -122,6 +122,7 @@ class AppViewModel @Inject constructor(
                     state.copy(
                         current = podcast ?: state.current,
                         isPlaying = playback.isPlaying,
+                        isBuffering = playback.isBuffering,
                         currentTime = playback.currentPosition,
                         duration = playback.duration,
                         speed = playback.playbackSpeed,
@@ -191,13 +192,19 @@ class AppViewModel @Inject constructor(
     private fun cycleTimer() {
         val current = playbackClient.sleepTimerSeconds.value
         val minutes = when {
+            playbackClient.sleepAtEpisodeEnd.value -> null // OFF
             current == 0 -> 15
             current <= 15 * 60 -> 30
             current <= 30 * 60 -> 45
             current <= 45 * 60 -> 60
-            else -> 0
+            else -> -1 // end of episode
         }
-        if (minutes == 0) playbackClient.cancelSleepTimer() else playbackClient.startSleepTimer(minutes)
+        when (minutes) {
+            null -> playbackClient.cancelSleepTimer()
+            -1 -> playbackClient.startSleepTimerAtEnd()
+            0 -> playbackClient.cancelSleepTimer()
+            else -> playbackClient.startSleepTimer(minutes)
+        }
     }
 
     private fun updateState(transform: (UiState) -> UiState) {

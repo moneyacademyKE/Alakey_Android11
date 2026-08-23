@@ -48,6 +48,7 @@ fun GlassPodcastRow(
                     if (spec.subtitle.isNotBlank()) Text(spec.subtitle, color = Color.White.copy(.62f), style = MaterialTheme.typography.bodySmall, maxLines = 1)
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         if (spec.progress > 0f) StatusPill(if (spec.progress >= .95f) "Played" else "${(spec.progress * 100).roundToInt()}%", Color(0xFFFFB300))
+                        if (spec.remainingMs > 0) StatusPill("${(spec.remainingMs + 59_999) / 60_000} min left", Color(0xFFFFB300))
                         if (spec.isInQueue) StatusPill("Queued", Color(0xFFBD00FF))
                         if (spec.isDownloaded) StatusPill("Offline", Color(0xFF00E676))
                         when (spec.downloadOp) {
