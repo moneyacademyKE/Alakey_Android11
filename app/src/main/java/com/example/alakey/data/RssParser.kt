@@ -69,8 +69,16 @@ object RssParser {
             when (parser.name) {
                 "title" -> title = readText(parser)
                 "description", "summary", "content" -> description = readText(parser)
-                "enclosure" -> audioUrl = parser.getAttributeValue(null, "url") ?: ""
-                "itunes:image" -> imageUrl = parser.getAttributeValue(null, "href") ?: ""
+                "enclosure" -> {
+                    audioUrl = parser.getAttributeValue(null, "url") ?: ""
+                    // Consume the tag itself, else its END_TAG terminates the item loop early.
+                    if (parser.isEmptyElementTag()) parser.next() else skip(parser)
+                }
+                "itunes:image" -> {
+                    imageUrl = parser.getAttributeValue(null, "href") ?: ""
+                    // Same as enclosure: an unconsumed open tag's END_TAG ends the loop prematurely.
+                    if (parser.isEmptyElementTag()) parser.next() else skip(parser)
+                }
                 "pubDate", "published" -> pubDate = readText(parser)
                 "guid" -> guid = readText(parser)
                 "itunes:duration" -> {
@@ -121,12 +129,16 @@ object RssParser {
     }
 
     private fun readText(parser: XmlPullParser): String {
-        var result = ""
-        if (parser.next() == XmlPullParser.TEXT) {
-            result = parser.text
-            parser.nextTag()
+        // KXmlParser may deliver long/CDATA text as MULTIPLE TEXT events; gather them all.
+        val sb = StringBuilder()
+        var ev = parser.next()
+        while (ev == XmlPullParser.TEXT) {
+            sb.append(parser.text)
+            ev = parser.next()
         }
-        return result
+        // A nested element inside the text holder (rare) must be consumed too.
+        if (ev == XmlPullParser.START_TAG) skip(parser)
+        return sb.toString()
     }
 
     private fun skip(parser: XmlPullParser) {
