@@ -1,0 +1,190 @@
+-- Merging decision tree log ---
+manifest
+ADDED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml:2:1-41:12
+INJECTED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml:2:1-41:12
+INJECTED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml:2:1-41:12
+INJECTED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml:2:1-41:12
+MERGED from [androidx.wear.tiles:tiles:1.4.0] /Users/moe/.gradle/caches/8.13/transforms/6e294f50ec0f30c9bd6cfdebe10e6b64/transformed/tiles-1.4.0/AndroidManifest.xml:2:1-19:12
+MERGED from [androidx.wear.protolayout:protolayout-expression:1.2.0] /Users/moe/.gradle/caches/8.13/transforms/05fb7d566b39daa206601e8616000b3f/transformed/protolayout-expression-1.2.0/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.wear.protolayout:protolayout:1.2.0] /Users/moe/.gradle/caches/8.13/transforms/82cc0af30e1b49a2afc1f80bfa873d61/transformed/protolayout-1.2.0/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.annotation:annotation-experimental:1.4.1] /Users/moe/.gradle/caches/8.13/transforms/b786ff7271b86612da633cfd1dd1f540/transformed/annotation-experimental-1.4.1/AndroidManifest.xml:2:1-7:12
+MERGED from [com.google.android.gms:play-services-wearable:19.0.0] /Users/moe/.gradle/caches/8.13/transforms/ce4a1b50a83186bc6cdaac572db4ad9f/transformed/play-services-wearable-19.0.0/AndroidManifest.xml:17:1-24:12
+MERGED from [com.google.android.gms:play-services-base:18.5.0] /Users/moe/.gradle/caches/8.13/transforms/13a1b8d44d1dd57e0b97bedca341a90d/transformed/play-services-base-18.5.0/AndroidManifest.xml:2:1-7:12
+MERGED from [com.google.android.gms:play-services-tasks:18.2.0] /Users/moe/.gradle/caches/8.13/transforms/d1dcdf7bd3acbc121a2a2504306b311d/transformed/play-services-tasks-18.2.0/AndroidManifest.xml:2:1-5:12
+MERGED from [com.google.android.gms:play-services-basement:18.4.0] /Users/moe/.gradle/caches/8.13/transforms/334d912b018023fae4112efc298c7897/transformed/play-services-basement-18.4.0/AndroidManifest.xml:2:1-9:12
+MERGED from [androidx.fragment:fragment:1.1.0] /Users/moe/.gradle/caches/8.13/transforms/41a23faa409543b40fbd9e82d6454e4d/transformed/fragment-1.1.0/AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.viewpager:viewpager:1.0.0] /Users/moe/.gradle/caches/8.13/transforms/0b5adedd4bc0e65be2249d17e0257898/transformed/viewpager-1.0.0/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.loader:loader:1.0.0] /Users/moe/.gradle/caches/8.13/transforms/067116ba27592ba57f8774400bb050e3/transformed/loader-1.0.0/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.activity:activity:1.0.0] /Users/moe/.gradle/caches/8.13/transforms/0df39a32b51e4422d100882cc284e8d0/transformed/activity-1.0.0/AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.customview:customview:1.0.0] /Users/moe/.gradle/caches/8.13/transforms/17b3ea1019d15d3097aceae041c4783a/transformed/customview-1.0.0/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.core:core:1.2.0] /Users/moe/.gradle/caches/8.13/transforms/9a9b9104ca53710b0f9bb367803a71ac/transformed/core-1.2.0/AndroidManifest.xml:17:1-26:12
+MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.0] /Users/moe/.gradle/caches/8.13/transforms/6434b1ef925034738f3a333b30ce599e/transformed/versionedparcelable-1.1.0/AndroidManifest.xml:17:1-27:12
+MERGED from [androidx.lifecycle:lifecycle-runtime:2.1.0] /Users/moe/.gradle/caches/8.13/transforms/ea4c864e6ea8c093fed1b6bc39d1c5ca/transformed/lifecycle-runtime-2.1.0/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.lifecycle:lifecycle-viewmodel:2.1.0] /Users/moe/.gradle/caches/8.13/transforms/70de331190ce550aa948382323d35889/transformed/lifecycle-viewmodel-2.1.0/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.savedstate:savedstate:1.0.0] /Users/moe/.gradle/caches/8.13/transforms/3bf83cefe53338a0eda40a8539bb9740/transformed/savedstate-1.0.0/AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.lifecycle:lifecycle-livedata:2.0.0] /Users/moe/.gradle/caches/8.13/transforms/715621e1ff7563389360085fcc3e2a11/transformed/lifecycle-livedata-2.0.0/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.lifecycle:lifecycle-livedata-core:2.0.0] /Users/moe/.gradle/caches/8.13/transforms/ec2443eb005c9632e6d3fc17c7f9d35d/transformed/lifecycle-livedata-core-2.0.0/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.arch.core:core-runtime:2.0.0] /Users/moe/.gradle/caches/8.13/transforms/6db6e9d57d2c97400c1ccb3eba6029a6/transformed/core-runtime-2.0.0/AndroidManifest.xml:17:1-22:12
+	package
+		INJECTED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml
+	android:versionName
+		INJECTED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml
+	android:versionCode
+		INJECTED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml
+	xmlns:android
+		ADDED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml:2:11-69
+uses-feature#android.hardware.type.watch
+ADDED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml:4:5-6:35
+	android:required
+		ADDED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml:6:9-32
+	android:name
+		ADDED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml:5:9-51
+application
+ADDED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml:8:5-39:19
+INJECTED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml:8:5-39:19
+MERGED from [androidx.wear.tiles:tiles:1.4.0] /Users/moe/.gradle/caches/8.13/transforms/6e294f50ec0f30c9bd6cfdebe10e6b64/transformed/tiles-1.4.0/AndroidManifest.xml:13:5-17:19
+MERGED from [androidx.wear.tiles:tiles:1.4.0] /Users/moe/.gradle/caches/8.13/transforms/6e294f50ec0f30c9bd6cfdebe10e6b64/transformed/tiles-1.4.0/AndroidManifest.xml:13:5-17:19
+MERGED from [com.google.android.gms:play-services-wearable:19.0.0] /Users/moe/.gradle/caches/8.13/transforms/ce4a1b50a83186bc6cdaac572db4ad9f/transformed/play-services-wearable-19.0.0/AndroidManifest.xml:22:5-20
+MERGED from [com.google.android.gms:play-services-wearable:19.0.0] /Users/moe/.gradle/caches/8.13/transforms/ce4a1b50a83186bc6cdaac572db4ad9f/transformed/play-services-wearable-19.0.0/AndroidManifest.xml:22:5-20
+MERGED from [com.google.android.gms:play-services-base:18.5.0] /Users/moe/.gradle/caches/8.13/transforms/13a1b8d44d1dd57e0b97bedca341a90d/transformed/play-services-base-18.5.0/AndroidManifest.xml:4:5-6:19
+MERGED from [com.google.android.gms:play-services-base:18.5.0] /Users/moe/.gradle/caches/8.13/transforms/13a1b8d44d1dd57e0b97bedca341a90d/transformed/play-services-base-18.5.0/AndroidManifest.xml:4:5-6:19
+MERGED from [com.google.android.gms:play-services-tasks:18.2.0] /Users/moe/.gradle/caches/8.13/transforms/d1dcdf7bd3acbc121a2a2504306b311d/transformed/play-services-tasks-18.2.0/AndroidManifest.xml:4:5-20
+MERGED from [com.google.android.gms:play-services-tasks:18.2.0] /Users/moe/.gradle/caches/8.13/transforms/d1dcdf7bd3acbc121a2a2504306b311d/transformed/play-services-tasks-18.2.0/AndroidManifest.xml:4:5-20
+MERGED from [com.google.android.gms:play-services-basement:18.4.0] /Users/moe/.gradle/caches/8.13/transforms/334d912b018023fae4112efc298c7897/transformed/play-services-basement-18.4.0/AndroidManifest.xml:5:5-7:19
+MERGED from [com.google.android.gms:play-services-basement:18.4.0] /Users/moe/.gradle/caches/8.13/transforms/334d912b018023fae4112efc298c7897/transformed/play-services-basement-18.4.0/AndroidManifest.xml:5:5-7:19
+MERGED from [androidx.core:core:1.2.0] /Users/moe/.gradle/caches/8.13/transforms/9a9b9104ca53710b0f9bb367803a71ac/transformed/core-1.2.0/AndroidManifest.xml:24:5-89
+MERGED from [androidx.core:core:1.2.0] /Users/moe/.gradle/caches/8.13/transforms/9a9b9104ca53710b0f9bb367803a71ac/transformed/core-1.2.0/AndroidManifest.xml:24:5-89
+MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.0] /Users/moe/.gradle/caches/8.13/transforms/6434b1ef925034738f3a333b30ce599e/transformed/versionedparcelable-1.1.0/AndroidManifest.xml:24:5-25:19
+MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.0] /Users/moe/.gradle/caches/8.13/transforms/6434b1ef925034738f3a333b30ce599e/transformed/versionedparcelable-1.1.0/AndroidManifest.xml:24:5-25:19
+	android:extractNativeLibs
+		INJECTED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml
+	android:appComponentFactory
+		ADDED from [androidx.core:core:1.2.0] /Users/moe/.gradle/caches/8.13/transforms/9a9b9104ca53710b0f9bb367803a71ac/transformed/core-1.2.0/AndroidManifest.xml:24:18-86
+	android:supportsRtl
+		ADDED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml:11:9-35
+	android:label
+		ADDED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml:9:9-31
+	android:theme
+		ADDED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml:10:9-59
+service#com.example.alakey.wear.NowPlayingTileService
+ADDED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml:13:9-25:19
+	android:label
+		ADDED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml:15:13-35
+	android:exported
+		ADDED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml:18:13-36
+	android:permission
+		ADDED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml:17:13-91
+	android:description
+		ADDED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml:16:13-59
+	android:name
+		ADDED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml:14:13-50
+intent-filter#action:name:androidx.wear.tiles.action.BIND_TILE_PROVIDER
+ADDED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml:19:13-21:29
+action#androidx.wear.tiles.action.BIND_TILE_PROVIDER
+ADDED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml:20:17-88
+	android:name
+		ADDED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml:20:25-85
+meta-data#androidx.wear.tiles.PREVIEW
+ADDED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml:22:13-24:61
+	android:resource
+		ADDED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml:24:17-58
+	android:name
+		ADDED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml:23:17-59
+service#com.example.alakey.wear.NowPlayingDataListenerService
+ADDED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml:27:9-33:19
+	android:exported
+		ADDED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml:29:13-36
+	android:name
+		ADDED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml:28:13-58
+intent-filter#action:name:com.google.android.gms.wearable.BIND_LISTENER
+ADDED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml:30:13-32:29
+action#com.google.android.gms.wearable.BIND_LISTENER
+ADDED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml:31:17-88
+	android:name
+		ADDED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml:31:25-85
+activity#com.example.alakey.wear.ToggleActivity
+ADDED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml:35:9-38:62
+	android:exported
+		ADDED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml:37:13-37
+	android:theme
+		ADDED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml:38:13-59
+	android:name
+		ADDED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml:36:13-43
+uses-sdk
+INJECTED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml reason: use-sdk injection requested
+INJECTED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml
+INJECTED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml
+MERGED from [androidx.wear.tiles:tiles:1.4.0] /Users/moe/.gradle/caches/8.13/transforms/6e294f50ec0f30c9bd6cfdebe10e6b64/transformed/tiles-1.4.0/AndroidManifest.xml:5:5-44
+MERGED from [androidx.wear.tiles:tiles:1.4.0] /Users/moe/.gradle/caches/8.13/transforms/6e294f50ec0f30c9bd6cfdebe10e6b64/transformed/tiles-1.4.0/AndroidManifest.xml:5:5-44
+MERGED from [androidx.wear.protolayout:protolayout-expression:1.2.0] /Users/moe/.gradle/caches/8.13/transforms/05fb7d566b39daa206601e8616000b3f/transformed/protolayout-expression-1.2.0/AndroidManifest.xml:5:5-44
+MERGED from [androidx.wear.protolayout:protolayout-expression:1.2.0] /Users/moe/.gradle/caches/8.13/transforms/05fb7d566b39daa206601e8616000b3f/transformed/protolayout-expression-1.2.0/AndroidManifest.xml:5:5-44
+MERGED from [androidx.wear.protolayout:protolayout:1.2.0] /Users/moe/.gradle/caches/8.13/transforms/82cc0af30e1b49a2afc1f80bfa873d61/transformed/protolayout-1.2.0/AndroidManifest.xml:5:5-44
+MERGED from [androidx.wear.protolayout:protolayout:1.2.0] /Users/moe/.gradle/caches/8.13/transforms/82cc0af30e1b49a2afc1f80bfa873d61/transformed/protolayout-1.2.0/AndroidManifest.xml:5:5-44
+MERGED from [androidx.annotation:annotation-experimental:1.4.1] /Users/moe/.gradle/caches/8.13/transforms/b786ff7271b86612da633cfd1dd1f540/transformed/annotation-experimental-1.4.1/AndroidManifest.xml:5:5-44
+MERGED from [androidx.annotation:annotation-experimental:1.4.1] /Users/moe/.gradle/caches/8.13/transforms/b786ff7271b86612da633cfd1dd1f540/transformed/annotation-experimental-1.4.1/AndroidManifest.xml:5:5-44
+MERGED from [com.google.android.gms:play-services-wearable:19.0.0] /Users/moe/.gradle/caches/8.13/transforms/ce4a1b50a83186bc6cdaac572db4ad9f/transformed/play-services-wearable-19.0.0/AndroidManifest.xml:20:5-44
+MERGED from [com.google.android.gms:play-services-wearable:19.0.0] /Users/moe/.gradle/caches/8.13/transforms/ce4a1b50a83186bc6cdaac572db4ad9f/transformed/play-services-wearable-19.0.0/AndroidManifest.xml:20:5-44
+MERGED from [com.google.android.gms:play-services-base:18.5.0] /Users/moe/.gradle/caches/8.13/transforms/13a1b8d44d1dd57e0b97bedca341a90d/transformed/play-services-base-18.5.0/AndroidManifest.xml:3:5-44
+MERGED from [com.google.android.gms:play-services-base:18.5.0] /Users/moe/.gradle/caches/8.13/transforms/13a1b8d44d1dd57e0b97bedca341a90d/transformed/play-services-base-18.5.0/AndroidManifest.xml:3:5-44
+MERGED from [com.google.android.gms:play-services-tasks:18.2.0] /Users/moe/.gradle/caches/8.13/transforms/d1dcdf7bd3acbc121a2a2504306b311d/transformed/play-services-tasks-18.2.0/AndroidManifest.xml:3:5-44
+MERGED from [com.google.android.gms:play-services-tasks:18.2.0] /Users/moe/.gradle/caches/8.13/transforms/d1dcdf7bd3acbc121a2a2504306b311d/transformed/play-services-tasks-18.2.0/AndroidManifest.xml:3:5-44
+MERGED from [com.google.android.gms:play-services-basement:18.4.0] /Users/moe/.gradle/caches/8.13/transforms/334d912b018023fae4112efc298c7897/transformed/play-services-basement-18.4.0/AndroidManifest.xml:3:5-44
+MERGED from [com.google.android.gms:play-services-basement:18.4.0] /Users/moe/.gradle/caches/8.13/transforms/334d912b018023fae4112efc298c7897/transformed/play-services-basement-18.4.0/AndroidManifest.xml:3:5-44
+MERGED from [androidx.fragment:fragment:1.1.0] /Users/moe/.gradle/caches/8.13/transforms/41a23faa409543b40fbd9e82d6454e4d/transformed/fragment-1.1.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.fragment:fragment:1.1.0] /Users/moe/.gradle/caches/8.13/transforms/41a23faa409543b40fbd9e82d6454e4d/transformed/fragment-1.1.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.viewpager:viewpager:1.0.0] /Users/moe/.gradle/caches/8.13/transforms/0b5adedd4bc0e65be2249d17e0257898/transformed/viewpager-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.viewpager:viewpager:1.0.0] /Users/moe/.gradle/caches/8.13/transforms/0b5adedd4bc0e65be2249d17e0257898/transformed/viewpager-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.loader:loader:1.0.0] /Users/moe/.gradle/caches/8.13/transforms/067116ba27592ba57f8774400bb050e3/transformed/loader-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.loader:loader:1.0.0] /Users/moe/.gradle/caches/8.13/transforms/067116ba27592ba57f8774400bb050e3/transformed/loader-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.activity:activity:1.0.0] /Users/moe/.gradle/caches/8.13/transforms/0df39a32b51e4422d100882cc284e8d0/transformed/activity-1.0.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.activity:activity:1.0.0] /Users/moe/.gradle/caches/8.13/transforms/0df39a32b51e4422d100882cc284e8d0/transformed/activity-1.0.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.customview:customview:1.0.0] /Users/moe/.gradle/caches/8.13/transforms/17b3ea1019d15d3097aceae041c4783a/transformed/customview-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.customview:customview:1.0.0] /Users/moe/.gradle/caches/8.13/transforms/17b3ea1019d15d3097aceae041c4783a/transformed/customview-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.core:core:1.2.0] /Users/moe/.gradle/caches/8.13/transforms/9a9b9104ca53710b0f9bb367803a71ac/transformed/core-1.2.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.core:core:1.2.0] /Users/moe/.gradle/caches/8.13/transforms/9a9b9104ca53710b0f9bb367803a71ac/transformed/core-1.2.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.0] /Users/moe/.gradle/caches/8.13/transforms/6434b1ef925034738f3a333b30ce599e/transformed/versionedparcelable-1.1.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.0] /Users/moe/.gradle/caches/8.13/transforms/6434b1ef925034738f3a333b30ce599e/transformed/versionedparcelable-1.1.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.lifecycle:lifecycle-runtime:2.1.0] /Users/moe/.gradle/caches/8.13/transforms/ea4c864e6ea8c093fed1b6bc39d1c5ca/transformed/lifecycle-runtime-2.1.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-runtime:2.1.0] /Users/moe/.gradle/caches/8.13/transforms/ea4c864e6ea8c093fed1b6bc39d1c5ca/transformed/lifecycle-runtime-2.1.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-viewmodel:2.1.0] /Users/moe/.gradle/caches/8.13/transforms/70de331190ce550aa948382323d35889/transformed/lifecycle-viewmodel-2.1.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-viewmodel:2.1.0] /Users/moe/.gradle/caches/8.13/transforms/70de331190ce550aa948382323d35889/transformed/lifecycle-viewmodel-2.1.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.savedstate:savedstate:1.0.0] /Users/moe/.gradle/caches/8.13/transforms/3bf83cefe53338a0eda40a8539bb9740/transformed/savedstate-1.0.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.savedstate:savedstate:1.0.0] /Users/moe/.gradle/caches/8.13/transforms/3bf83cefe53338a0eda40a8539bb9740/transformed/savedstate-1.0.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.lifecycle:lifecycle-livedata:2.0.0] /Users/moe/.gradle/caches/8.13/transforms/715621e1ff7563389360085fcc3e2a11/transformed/lifecycle-livedata-2.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-livedata:2.0.0] /Users/moe/.gradle/caches/8.13/transforms/715621e1ff7563389360085fcc3e2a11/transformed/lifecycle-livedata-2.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-livedata-core:2.0.0] /Users/moe/.gradle/caches/8.13/transforms/ec2443eb005c9632e6d3fc17c7f9d35d/transformed/lifecycle-livedata-core-2.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-livedata-core:2.0.0] /Users/moe/.gradle/caches/8.13/transforms/ec2443eb005c9632e6d3fc17c7f9d35d/transformed/lifecycle-livedata-core-2.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.arch.core:core-runtime:2.0.0] /Users/moe/.gradle/caches/8.13/transforms/6db6e9d57d2c97400c1ccb3eba6029a6/transformed/core-runtime-2.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.arch.core:core-runtime:2.0.0] /Users/moe/.gradle/caches/8.13/transforms/6db6e9d57d2c97400c1ccb3eba6029a6/transformed/core-runtime-2.0.0/AndroidManifest.xml:20:5-44
+	android:targetSdkVersion
+		INJECTED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml
+	android:minSdkVersion
+		INJECTED from /Users/moe/Desktop/Alakey_Android11/wear/src/main/AndroidManifest.xml
+queries
+ADDED from [androidx.wear.tiles:tiles:1.4.0] /Users/moe/.gradle/caches/8.13/transforms/6e294f50ec0f30c9bd6cfdebe10e6b64/transformed/tiles-1.4.0/AndroidManifest.xml:7:5-11:15
+intent#action:name:androidx.wear.tiles.action.BIND_UPDATE_REQUESTER
+ADDED from [androidx.wear.tiles:tiles:1.4.0] /Users/moe/.gradle/caches/8.13/transforms/6e294f50ec0f30c9bd6cfdebe10e6b64/transformed/tiles-1.4.0/AndroidManifest.xml:8:9-10:18
+action#androidx.wear.tiles.action.BIND_UPDATE_REQUESTER
+ADDED from [androidx.wear.tiles:tiles:1.4.0] /Users/moe/.gradle/caches/8.13/transforms/6e294f50ec0f30c9bd6cfdebe10e6b64/transformed/tiles-1.4.0/AndroidManifest.xml:9:13-87
+	android:name
+		ADDED from [androidx.wear.tiles:tiles:1.4.0] /Users/moe/.gradle/caches/8.13/transforms/6e294f50ec0f30c9bd6cfdebe10e6b64/transformed/tiles-1.4.0/AndroidManifest.xml:9:21-84
+uses-library#wear-sdk
+ADDED from [androidx.wear.tiles:tiles:1.4.0] /Users/moe/.gradle/caches/8.13/transforms/6e294f50ec0f30c9bd6cfdebe10e6b64/transformed/tiles-1.4.0/AndroidManifest.xml:14:9-16:40
+	android:required
+		ADDED from [androidx.wear.tiles:tiles:1.4.0] /Users/moe/.gradle/caches/8.13/transforms/6e294f50ec0f30c9bd6cfdebe10e6b64/transformed/tiles-1.4.0/AndroidManifest.xml:16:13-37
+	android:name
+		ADDED from [androidx.wear.tiles:tiles:1.4.0] /Users/moe/.gradle/caches/8.13/transforms/6e294f50ec0f30c9bd6cfdebe10e6b64/transformed/tiles-1.4.0/AndroidManifest.xml:15:13-36
+activity#com.google.android.gms.common.api.GoogleApiActivity
+ADDED from [com.google.android.gms:play-services-base:18.5.0] /Users/moe/.gradle/caches/8.13/transforms/13a1b8d44d1dd57e0b97bedca341a90d/transformed/play-services-base-18.5.0/AndroidManifest.xml:5:9-173
+	android:exported
+		ADDED from [com.google.android.gms:play-services-base:18.5.0] /Users/moe/.gradle/caches/8.13/transforms/13a1b8d44d1dd57e0b97bedca341a90d/transformed/play-services-base-18.5.0/AndroidManifest.xml:5:146-170
+	android:theme
+		ADDED from [com.google.android.gms:play-services-base:18.5.0] /Users/moe/.gradle/caches/8.13/transforms/13a1b8d44d1dd57e0b97bedca341a90d/transformed/play-services-base-18.5.0/AndroidManifest.xml:5:86-145
+	android:name
+		ADDED from [com.google.android.gms:play-services-base:18.5.0] /Users/moe/.gradle/caches/8.13/transforms/13a1b8d44d1dd57e0b97bedca341a90d/transformed/play-services-base-18.5.0/AndroidManifest.xml:5:19-85
+meta-data#com.google.android.gms.version
+ADDED from [com.google.android.gms:play-services-basement:18.4.0] /Users/moe/.gradle/caches/8.13/transforms/334d912b018023fae4112efc298c7897/transformed/play-services-basement-18.4.0/AndroidManifest.xml:6:9-122
+	android:value
+		ADDED from [com.google.android.gms:play-services-basement:18.4.0] /Users/moe/.gradle/caches/8.13/transforms/334d912b018023fae4112efc298c7897/transformed/play-services-basement-18.4.0/AndroidManifest.xml:6:66-119
+	android:name
+		ADDED from [com.google.android.gms:play-services-basement:18.4.0] /Users/moe/.gradle/caches/8.13/transforms/334d912b018023fae4112efc298c7897/transformed/play-services-basement-18.4.0/AndroidManifest.xml:6:20-65
