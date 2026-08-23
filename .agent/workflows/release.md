@@ -1,27 +1,18 @@
 ---
-description: Push changes and create a GitHub Release
+description: Build and publish a signed Android release from CI
 ---
 
-# Workflow: GitHub Release
+# Workflow: Signed GitHub Release
 
-This workflow stages all changes, commits them with a message, pushes to the master branch, and creates a formal GitHub release with the debug APK attached.
+1. Update `versionName` and monotonically increment `versionCode` in `app/build.gradle.kts`.
+2. Verify locally with the gitignored `keystore.properties`:
 
-1. Stage all changes:
 ```bash
-git add .
+./gradlew testDebugUnitTest lintRelease assembleRelease
+apksigner verify --verbose app/build/outputs/apk/release/app-release.apk
 ```
 
-2. Commit changes (update the message as needed):
-```bash
-git commit -m "chore: cumulative updates and refinements"
-```
+3. Merge through a PR. Create and push a `v<versionName>` tag only after CI is green.
+4. GitHub Actions decodes the secret-backed keystore, checks tag/version equality, builds and verifies the signed APK, and publishes the APK plus SHA-256 file.
 
-3. Push to master:
-```bash
-git push origin master
-```
-
-4. Create the release (increment version as needed):
-```bash
-gh release create v2.1.x-sierra app/build/outputs/apk/debug/app-debug.apk --title "Release v2.1.x-sierra" --notes "Release notes here."
-```
+Never use `git add .`, push directly to `master`, publish a debug APK, or commit signing material.

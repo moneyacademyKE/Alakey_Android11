@@ -28,38 +28,109 @@ jobs:
       - name: Run Unit Tests
         run: ./gradlew testDebugUnitTest
 
+      - name: Run Release Lint
+        run: ./gradlew lintRelease
+
       - name: Build Compose UI Tests
         run: ./gradlew assembleDebugAndroidTest
 
       - name: Build Debug APK
         run: ./gradlew assembleDebug
 
-      - name: Upload APK Artifact
+      - name: Build unsigned release APK
+        run: ./gradlew assembleRelease
+
+      - name: Assert release APK is unsigned without secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="app/build/outputs/apk/release/app-release-unsigned.apk"
+          build_tools="$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
+          test -f "$apk"
+          if "$ANDROID_HOME/build-tools/$build_tools/apksigner" verify "$apk"; then
+            echo "Pull-request release APK must remain unsigned without signing inputs" >&2
+            exit 1
+          fi
+
+      - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
           name: app-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
 
   release:
-    name: GitHub Release
+    name: Signed GitHub Release
     needs: build
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      ALAKEY_RELEASE_STORE_FILE: ${{ github.workspace }}/alakey-release.jks
+      ALAKEY_RELEASE_STORE_PASSWORD: ${{ secrets.ALAKEY_RELEASE_STORE_PASSWORD }}
+      ALAKEY_RELEASE_KEY_ALIAS: ${{ secrets.ALAKEY_RELEASE_KEY_ALIAS }}
+      ALAKEY_RELEASE_KEY_PASSWORD: ${{ secrets.ALAKEY_RELEASE_KEY_PASSWORD }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Download APK Artifact
-        uses: actions/download-artifact@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
         with:
-          name: app-debug-apk
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Grant Execute Permission
+        run: chmod +x gradlew
+
+      - name: Validate tag and app version
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag_version="${GITHUB_REF_NAME#v}"
+          app_version="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts)"
+          test "$tag_version" = "$app_version" || {
+            echo "Tag $GITHUB_REF_NAME does not match app version $app_version" >&2
+            exit 1
+          }
+
+      - name: Decode signing keystore
+        env:
+          ALAKEY_RELEASE_KEYSTORE_BASE64: ${{ secrets.ALAKEY_RELEASE_KEYSTORE_BASE64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$ALAKEY_RELEASE_KEYSTORE_BASE64"
+          printf '%s' "$ALAKEY_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$ALAKEY_RELEASE_STORE_FILE"
+          chmod 600 "$ALAKEY_RELEASE_STORE_FILE"
+
+      - name: Build signed release APK
+        run: ./gradlew testDebugUnitTest lintRelease assembleRelease
+
+      - name: Verify signed APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="app/build/outputs/apk/release/app-release.apk"
+          build_tools="$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
+          "$ANDROID_HOME/build-tools/$build_tools/apksigner" verify --verbose --print-certs "$apk"
+          sha256sum "$apk" | tee "$apk.sha256"
+
+      - name: Upload signed APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-apk
+          path: |
+            app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/apk/release/app-release.apk.sha256
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: app-debug.apk
+          files: |
+            app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/apk/release/app-release.apk.sha256
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

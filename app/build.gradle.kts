@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -5,6 +7,32 @@ plugins {
     id("com.google.devtools.ksp")
     id("jacoco") // Enable JaCoCo plugin
 }
+
+val releaseStoreFile = providers.environmentVariable("ALAKEY_RELEASE_STORE_FILE")
+val releaseStorePassword = providers.environmentVariable("ALAKEY_RELEASE_STORE_PASSWORD")
+val releaseKeyAlias = providers.environmentVariable("ALAKEY_RELEASE_KEY_ALIAS")
+val releaseKeyPassword = providers.environmentVariable("ALAKEY_RELEASE_KEY_PASSWORD")
+val releaseEnvironment = listOf(
+    releaseStoreFile,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+)
+val releaseEnvironmentCount = releaseEnvironment.count { it.isPresent }
+require(releaseEnvironmentCount == 0 || releaseEnvironmentCount == releaseEnvironment.size) {
+    "Release signing environment is incomplete. Set all ALAKEY_RELEASE_* variables or none."
+}
+
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) keystorePropertiesFile.inputStream().use { load(it) }
+}
+val releaseSigningEnabled = releaseEnvironmentCount == releaseEnvironment.size || keystorePropertiesFile.exists()
+
+fun releaseSigningValue(environment: Provider<String>, property: String): String =
+    environment.orNull ?: requireNotNull(keystoreProperties.getProperty(property)) {
+        "Missing $property in keystore.properties"
+    }
 
 android {
     namespace = "com.example.alakey"
@@ -14,9 +42,20 @@ android {
         applicationId = "com.example.alakey"
         minSdk = 30 
         targetSdk = 36
-        versionCode = 3
-        versionName = "2.3.0"
+        versionCode = 4
+        versionName = "2.4.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        create("release") {
+            if (releaseSigningEnabled) {
+                storeFile = rootProject.file(releaseSigningValue(releaseStoreFile, "storeFile"))
+                storePassword = releaseSigningValue(releaseStorePassword, "storePassword")
+                keyAlias = releaseSigningValue(releaseKeyAlias, "keyAlias")
+                keyPassword = releaseSigningValue(releaseKeyPassword, "keyPassword")
+            }
+        }
     }
     
     buildTypes {
@@ -27,6 +66,9 @@ android {
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (releaseSigningEnabled) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
     

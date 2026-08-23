@@ -8,9 +8,9 @@ This document outlines the standard workflows for maintaining and developing the
 - **Requirements**: Java 17, Gradle.
 
 ## 🚀 Releasing
-- **Command**: `/release`
-- **Purpose**: Automates Git commit, push, and GitHub Release creation.
-- **Notes**: Ensure you've built the APK first.
+- **Local build**: Copy `keystore.properties.example` to the gitignored `keystore.properties`, point it at the release keystore, then run `./gradlew testDebugUnitTest lintRelease assembleRelease`.
+- **CI release**: Store the keystore as base64 in `ALAKEY_RELEASE_KEYSTORE_BASE64`; store its password, alias, and key password in the matching `ALAKEY_RELEASE_*` GitHub Actions secrets. Pushing a `v<versionName>` tag builds, verifies, checksums, and publishes `app-release.apk`.
+- **Rule**: Never commit a keystore, `keystore.properties`, or signing password. Preserve and back up the original release key; Android updates must use the same certificate.
 
 ## 📱 Verification
 - **Command**: `/test-on-device`
