@@ -231,7 +231,7 @@ class AppViewModel @Inject constructor(
 
     private fun loadChapters(podcast: PodcastEntity) {
         chaptersLoadedFor = podcast.id
-        val url = podcast.attributes["chaptersUrl"]
+        val url = podcast.chaptersUrl
         if (url.isNullOrBlank()) {
             updateState { it.copy(chapters = emptyList()) }
             return

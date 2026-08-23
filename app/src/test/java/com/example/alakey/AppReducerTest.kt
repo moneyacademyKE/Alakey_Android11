@@ -41,7 +41,7 @@ class AppReducerTest {
     }
 
     private fun episode(id: String, progress: Long = 0, duration: Long = 100, pubDate: String = "") =
-        PodcastEntity(id, "Show", "Episode $id", "Desc", "image", "audio", duration = duration, progress = progress, pubDate = pubDate)
+        PodcastEntity(id, "Show", "Episode $id", "Desc", "image", "audio", duration = duration, pubDate = pubDate).apply { this.progress = progress }
 }
 
 class UxPolicyTest {
@@ -52,9 +52,9 @@ class UxPolicyTest {
     }
 
     @Test fun `all includes finished while new excludes started`() {
-        val finished = PodcastEntity("finished", "Show", "Finished", "", "", "", duration = 100, progress = 100)
-        val started = PodcastEntity("started", "Show", "Started", "", "", "", duration = 100, progress = 1)
-        val fresh = PodcastEntity("fresh", "Show", "Fresh", "", "", "", duration = 100, progress = 0)
+        val finished = PodcastEntity("finished", "Show", "Finished", "", "", "", duration = 100).apply { progress = 100 }
+        val started = PodcastEntity("started", "Show", "Started", "", "", "", duration = 100).apply { progress = 1 }
+        val fresh = PodcastEntity("fresh", "Show", "Fresh", "", "", "", duration = 100)
         assertEquals(setOf("finished", "started", "fresh"), LibraryFilters.apply("All", listOf(finished, started, fresh)).map { it.id }.toSet())
         assertEquals(listOf("fresh"), LibraryFilters.apply("New", listOf(finished, started, fresh)).map { it.id })
     }

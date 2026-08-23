@@ -60,14 +60,14 @@ class InformationModelTest {
 
     @Test
     fun `hydrate handles empty facts by returning base`() {
-        val base = PodcastEntity(id = "test", title = "T", episodeTitle = "E", description = "D", imageUrl = "I", audioUrl = "A", progress = 123)
+        val base = PodcastEntity(id = "test", title = "T", episodeTitle = "E", description = "D", imageUrl = "I", audioUrl = "A").apply { progress = 123 }
         val hydrated = InformationModel.hydrate(base, emptyList())
         assertEquals(base, hydrated)
     }
 
     @Test
     fun `hydrate handles malformed values gracefully`() {
-        val base = PodcastEntity(id = "test", title = "T", episodeTitle = "E", description = "D", imageUrl = "I", audioUrl = "A", progress = 0)
+        val base = PodcastEntity(id = "test", title = "T", episodeTitle = "E", description = "D", imageUrl = "I", audioUrl = "A")
         val facts = listOf(
             FactEntity("test", InformationModel.ATTR_PROGRESS, "not-a-number", tx = 100)
         )

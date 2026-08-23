@@ -51,11 +51,7 @@ object RssParser {
             .trim()
             .take(500)
 
-        val attrs = mutableMapOf<String, String>()
-        entry.directText("itunes:season").takeIf { it.isNotEmpty() }?.let { attrs["season"] = it }
-        entry.directText("itunes:episodeType").takeIf { it.isNotEmpty() }?.let { attrs["episodeType"] = it }
-        attrs["downloadPolicy"] = "latest"
-        entry.directElements("podcast:chapters").firstOrNull()?.attr("url")?.takeIf { it.isNotEmpty() }?.let { attrs["chaptersUrl"] = it }
+        val chaptersUrl = entry.directElements("podcast:chapters").firstOrNull()?.attr("url")?.takeIf { it.isNotEmpty() }
 
         return PodcastEntity(
             id = if (guid.isNotEmpty()) "$feedUrl/$guid" else (feedUrl + audioUrl).hashCode().toString(),
@@ -67,7 +63,8 @@ object RssParser {
             feedUrl = feedUrl,
             duration = parseDuration(entry.directText("itunes:duration")),
             pubDate = entry.directText("pubDate", "published"),
-            attributes = attrs
+            chaptersUrl = chaptersUrl,
+            downloadPolicy = "latest"
         )
     }
 
