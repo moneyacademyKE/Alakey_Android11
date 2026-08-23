@@ -14,8 +14,8 @@ android {
         applicationId = "com.example.alakey"
         minSdk = 30 
         targetSdk = 36
-        versionCode = 3
-        versionName = "2.3.0"
+        versionCode = 4
+        versionName = "2.5.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     
