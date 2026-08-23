@@ -24,12 +24,12 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
@@ -61,6 +61,7 @@ fun MainContent() {
     val state by vm.uiState.collectAsState()
     val searchResults by vm.searchResults.collectAsState()
     val sleepTimerSeconds by vm.sleepTimerSeconds.collectAsState()
+    val sleepAtEnd by vm.sleepAtEpisodeEnd.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
     val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     val sensorManager = remember { context.getSystemService(Context.SENSOR_SERVICE) as SensorManager }
@@ -114,7 +115,7 @@ fun MainContent() {
     }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        FluxBackground(amplitude = state.amplitude, color = Color(state.dominantColor))
+        FluxBackground(color = Color(state.dominantColor))
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
             Header(activeScreen.name, vm::playRadio, { vm.setCarMode(true) }, { showAddDialog = true })
             AnimatedContent(
@@ -126,7 +127,7 @@ fun MainContent() {
                 when (screen) {
                     AppViewModel.Screen.Library -> LibraryContent(state, vm, { showAddDialog = true }, { showSleepSheet = true })
                     AppViewModel.Screen.Inbox -> EpisodeList(state.inbox, state, vm)
-                    AppViewModel.Screen.Queue -> EpisodeList(state.queue, state, vm)
+                    AppViewModel.Screen.Queue -> EpisodeList(state.queue, state, vm, dismissible = true)
                     AppViewModel.Screen.Marketplace -> GlassMarketplace(state.marketOps, vm::marketplaceSubscribe)
                 }
             }
@@ -156,8 +157,12 @@ fun MainContent() {
         AddPodcastDialog({ showAddDialog = false }, { vm.importFeed(it); showAddDialog = false }, vm::searchPodcasts, searchResults)
     }
     if (showSleepSheet) {
-        SleepTimerSheet(sleepTimerSeconds, { showSleepSheet = false }) { minutes ->
-            if (minutes == 0) vm.cancelSleepTimer() else vm.startSleepTimer(minutes)
+        SleepTimerSheet(sleepTimerSeconds, sleepAtEnd, { showSleepSheet = false }) { minutes ->
+            when (minutes) {
+                -1 -> vm.startSleepTimerAtEnd()
+                0 -> vm.cancelSleepTimer()
+                else -> vm.startSleepTimer(minutes)
+            }
             showSleepSheet = false
         }
     }
@@ -192,8 +197,21 @@ private fun HeadsetResumeEffect(vm: AppViewModel) {
 }
 
 private fun AppViewModel.UiState.toPlayerSpec(timer: Int) = PlayerSpec(
-    current?.episodeTitle.orEmpty(), current?.title.orEmpty(), current?.imageUrl.orEmpty(), isPlaying,
-    currentTime, duration, speed, amplitude, timer, dominantColor, vibrantColor, mutedColor
+    title = current?.episodeTitle.orEmpty(),
+    artist = current?.title.orEmpty(),
+    imageUrl = current?.imageUrl.orEmpty(),
+    isPlaying = isPlaying,
+    isBuffering = isBuffering,
+    currentMs = currentTime,
+    durationMs = duration,
+    bufferedMs = bufferedMs,
+    speed = speed,
+    sleepTimerSeconds = timer,
+    chapters = chapters,
+    currentChapterIndex = if (chapters.isEmpty()) -1 else chapters.indexOfLast { it.start <= currentTime },
+    dominantColor = dominantColor,
+    vibrantColor = vibrantColor,
+    mutedColor = mutedColor
 )
 
 @Composable
@@ -210,7 +228,8 @@ private fun Header(title: String, onRadio: () -> Unit, onCarMode: () -> Unit, on
 
 @Composable
 private fun HeaderAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
-    IconButton(onClick, Modifier.size(48.dp).semantics { role = Role.Button }) { Icon(icon, label, tint = Color.White) }
+    val interaction = remember { MutableInteractionSource() }
+    IconButton(onClick, Modifier.size(48.dp).pressScale(interaction).semantics { role = Role.Button }, interactionSource = interaction) { Icon(icon, label, tint = Color.White) }
 }
 
 @Composable
@@ -251,18 +270,46 @@ private fun LibraryContent(state: AppViewModel.UiState, vm: AppViewModel, onAdd:
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun EpisodeList(episodes: List<PodcastEntity>, state: AppViewModel.UiState, vm: AppViewModel) {
+private fun EpisodeList(episodes: List<PodcastEntity>, state: AppViewModel.UiState, vm: AppViewModel, dismissible: Boolean = false) {
     LazyColumn(contentPadding = PaddingValues(bottom = 176.dp, start = 16.dp, end = 16.dp)) {
         if (episodes.isEmpty()) item { EmptyState(Icons.Rounded.Inbox, "Nothing here", "Episodes will appear here when available.") }
-        items(episodes, key = { it.id }) { EpisodeRow(it, state, vm) }
+        items(episodes, key = { it.id }) { episode ->
+            if (dismissible) {
+                val dismissState = rememberSwipeToDismissBoxState(
+                    confirmValueChange = { value ->
+                        if (value == SwipeToDismissBoxValue.EndToStart) { vm.removeFromQueue(episode); true } else false
+                    }
+                )
+                SwipeToDismissBox(
+                    state = dismissState,
+                    enableDismissFromStartToEnd = false,
+                    backgroundContent = {
+                        Box(Modifier.fillMaxSize().padding(horizontal = 24.dp), Alignment.CenterEnd) {
+                            Icon(Icons.Rounded.PlaylistRemove, "Remove from queue", tint = Color.White.copy(.55f))
+                        }
+                    }
+                ) { EpisodeRow(episode, state, vm) }
+            } else {
+                EpisodeRow(episode, state, vm)
+            }
+        }
     }
 }
 
 @Composable
 private fun EpisodeRow(episode: PodcastEntity, state: AppViewModel.UiState, vm: AppViewModel) {
+    val progressFraction = if (episode.duration > 0) episode.progress.toFloat() / episode.duration else 0f
+    val remainingMs = if (progressFraction > 0f && progressFraction < .95f && episode.duration > episode.progress) {
+        val speed = if (episode.id == state.current?.id) state.speed else 1f
+        ((episode.duration - episode.progress) / speed).toLong()
+    } else 0L
     GlassPodcastRow(
-        PodcastRowSpec(episode.id, episode.episodeTitle, episode.title, episode.imageUrl, episode.isDownloaded, episode.isInQueue, if (episode.duration > 0) episode.progress.toFloat() / episode.duration else 0f, downloadOp = state.downloadOps[episode.id] ?: AsyncOp.Idle),
+        PodcastRowSpec(
+            episode.id, episode.episodeTitle, episode.title, episode.imageUrl, episode.isDownloaded, episode.isInQueue,
+            progressFraction, remainingMs, downloadOp = state.downloadOps[episode.id] ?: AsyncOp.Idle
+        ),
         { vm.play(episode) }, { vm.downloadEpisode(episode.id) },
         { if (episode.isInQueue) vm.removeFromQueue(episode) else vm.addToQueue(episode) },
         { vm.markPlayed(episode) }, { vm.markOlderPlayed(episode) }, { vm.deleteDownload(episode) }, { vm.playNext(episode) }
@@ -282,14 +329,22 @@ private fun EmptyState(icon: androidx.compose.ui.graphics.vector.ImageVector, ti
 }
 
 @Composable
-private fun SleepTimerSheet(currentSeconds: Int, onDismiss: () -> Unit, onSelectMinutes: (Int) -> Unit) {
+private fun SleepTimerSheet(currentSeconds: Int, atEnd: Boolean, onDismiss: () -> Unit, onSelectMinutes: (Int) -> Unit) {
     Dialog(onDismissRequest = onDismiss) {
         PrismaticGlass(Modifier.fillMaxWidth().heightIn(max = 420.dp).imePadding(), RoundedCornerShape(28.dp)) {
             Column(Modifier.padding(22.dp)) {
                 Text("Sleep timer", color = Color.White, style = MaterialTheme.typography.headlineSmall)
                 val minutes = (currentSeconds + 59) / 60
-                Text(if (currentSeconds > 0) "Currently $minutes ${if (minutes == 1) "minute" else "minutes"} remaining" else "Pause playback after a chosen duration.", color = Color.White.copy(.62f))
-                listOf(15, 30, 45, 60, 0).forEach { value -> Text(if (value == 0) "Off" else "$value minutes", color = Color.White, modifier = Modifier.fillMaxWidth().clickable { onSelectMinutes(value) }.padding(14.dp)) }
+                val status = when {
+                    atEnd -> "Pausing at the end of the current episode."
+                    currentSeconds > 0 -> "Currently $minutes ${if (minutes == 1) "minute" else "minutes"} remaining"
+                    else -> "Pause playback after a chosen duration."
+                }
+                Text(status, color = Color.White.copy(.62f))
+                listOf(15, 30, 45, 60, -1, 0).forEach { value ->
+                    val label = when (value) { -1 -> "End of episode"; 0 -> "Off"; else -> "$value minutes" }
+                    Text(label, color = Color.White, modifier = Modifier.fillMaxWidth().clickable { onSelectMinutes(value) }.padding(14.dp))
+                }
             }
         }
     }
@@ -324,7 +379,7 @@ fun AddPodcastDialog(onDismiss: () -> Unit, onImport: (String) -> Unit, onSearch
                     }
                 } else {
                     BasicTextField(text, { text = it }, Modifier.fillMaxWidth(), textStyle = MaterialTheme.typography.bodyLarge.copy(color = Color.White), decorationBox = { inner -> if (text.isEmpty()) Text("https://…", color = Color.Gray); inner() })
-                    Text(if (text.isEmpty() || validUrl) "Paste a direct RSS or Atom feed URL." else "Feed URL must start with http:// or https://", color = Color.White.copy(.6f), modifier = Modifier.padding(vertical = 12.dp))
+                    Text(if (text.isEmpty() || validUrl) "Paste a direct RSS or Atom URL." else "Feed URL must start with http:// or https://", color = Color.White.copy(.6f), modifier = Modifier.padding(vertical = 12.dp))
                     Row(Modifier.fillMaxWidth(), Arrangement.End) {
                         TextButton(onClick = onDismiss) { Text("Cancel") }
                         Button(enabled = validUrl, onClick = { importingFeed = text; onImport(text) }) { Text(if (importingFeed == text) "Syncing…" else "Import") }

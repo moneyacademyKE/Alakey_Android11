@@ -53,6 +53,16 @@ class FeedRepository @Inject constructor(
         }
     }
 
+    /** Podcasting 2.0 chapters JSON — best effort; missing/broken files yield an empty list. */
+    suspend fun fetchChapters(url: String): List<Chapter> = withContext(Dispatchers.IO) {
+        runCatching {
+            client.newCall(Request.Builder().url(url).build()).execute().use { response ->
+                if (!response.isSuccessful) return@use emptyList()
+                ChapterParser.parse(response.body?.string().orEmpty())
+            }
+        }.getOrDefault(emptyList())
+    }
+
     private suspend fun fetchValidFeed(url: String): String {
         val direct = runCatching { fetchDirect(url) }.getOrNull()
         if (direct.isValidXmlFeed()) return direct.orEmpty()

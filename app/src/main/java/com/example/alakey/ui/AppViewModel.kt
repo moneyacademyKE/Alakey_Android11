@@ -5,12 +5,14 @@ import android.graphics.Color as AndroidColor
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.alakey.data.Chapter
 import com.example.alakey.data.EventLogEntity
 import com.example.alakey.data.ItunesSearchResult
 import com.example.alakey.data.PodcastEntity
 import com.example.alakey.data.UniversalRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import kotlinx.coroutines.Job
@@ -43,12 +45,14 @@ class AppViewModel @Inject constructor(
         val optimisticPodcasts: List<PodcastEntity> = emptyList(),
         val current: PodcastEntity? = null,
         val isPlaying: Boolean = false,
+        val isBuffering: Boolean = false,
         val currentTime: Long = 0,
         val duration: Long = 1,
+        val bufferedMs: Long = 0,
         val speed: Float = 1f,
         val queue: List<PodcastEntity> = emptyList(),
         val inbox: List<PodcastEntity> = emptyList(),
-        val amplitude: Float = 0f,
+        val chapters: List<Chapter> = emptyList(),
         val dominantColor: Int = AndroidColor.CYAN,
         val vibrantColor: Int = AndroidColor.CYAN,
         val mutedColor: Int = AndroidColor.GRAY,
@@ -96,11 +100,14 @@ class AppViewModel @Inject constructor(
     private val _userEvents = MutableSharedFlow<UserEvent>()
     val userEvents: SharedFlow<UserEvent> = _userEvents.asSharedFlow()
     val sleepTimerSeconds: StateFlow<Int> = playbackClient.sleepTimerSeconds
+    val sleepAtEpisodeEnd: StateFlow<Boolean> = playbackClient.sleepAtEpisodeEnd
 
     private val _history = androidx.compose.runtime.mutableStateListOf<UiState>()
     val history: List<UiState> get() = _history
     private var searchJob: Job? = null
     private val searchGeneration = AtomicLong(0)
+    private var chaptersLoadedFor: String? = null
+    private val chaptersCache = ConcurrentHashMap<String, List<Chapter>>()
 
     init {
         viewModelScope.launch { playbackClient.playbackEnded.collect { playNextEpisode() } }
@@ -115,6 +122,8 @@ class AppViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            var lastSaveMs = 0L
+            var wasPlaying = false
             playbackClient.state.collect { playback ->
                 val known = _uiState.value.podcasts + _uiState.value.optimisticPodcasts
                 val podcast = known.find { it.id == playback.currentMediaId }
@@ -122,17 +131,24 @@ class AppViewModel @Inject constructor(
                     state.copy(
                         current = podcast ?: state.current,
                         isPlaying = playback.isPlaying,
+                        isBuffering = playback.isBuffering,
                         currentTime = playback.currentPosition,
                         duration = playback.duration,
-                        speed = playback.playbackSpeed,
-                        amplitude = playback.amplitude
+                        bufferedMs = playback.bufferedPosition,
+                        speed = playback.playbackSpeed
                     )
                 }
                 if (podcast != null && podcast.imageUrl != _uiState.value.current?.imageUrl) extractColor(podcast.imageUrl)
-                if (playback.isPlaying && podcast != null && playback.currentPosition > 0) {
+                if (podcast != null && playback.currentMediaId != chaptersLoadedFor) loadChapters(podcast)
+                val now = System.currentTimeMillis()
+                val playingSave = playback.isPlaying && now - lastSaveMs >= PROGRESS_SAVE_INTERVAL_MS
+                val pauseSave = wasPlaying && !playback.isPlaying && now - lastSaveMs >= PROGRESS_SAVE_MIN_GAP_MS
+                if (podcast != null && playback.currentPosition > 0 && (playingSave || pauseSave)) {
+                    lastSaveMs = now
                     repo.updateProgress(podcast.id, playback.currentPosition)
-                    repo.updateLastPlayed(podcast.id, System.currentTimeMillis())
+                    repo.updateLastPlayed(podcast.id, now)
                 }
+                wasPlaying = playback.isPlaying
             }
         }
         viewModelScope.launch {
@@ -148,7 +164,7 @@ class AppViewModel @Inject constructor(
 
     private fun handleEffects(action: Action) {
         when (action) {
-            is Action.Play -> playbackClient.play(action.podcast)
+            is Action.Play -> playbackClient.play(action.podcast, _uiState.value.queue)
             Action.TogglePlay -> playbackClient.togglePlay()
             is Action.Seek -> playbackClient.seek(action.ms)
             is Action.Skip -> playbackClient.skip(action.sec)
@@ -172,6 +188,7 @@ class AppViewModel @Inject constructor(
     }
 
     private fun playNextQueued() {
+        if (playbackClient.playlistSize() > 1) { playbackClient.next(); return }
         val queue = _uiState.value.queue
         val index = queue.indexOfFirst { it.id == _uiState.value.current?.id }
         if (index >= 0 && index + 1 < queue.size) playbackClient.play(queue[index + 1])
@@ -183,6 +200,7 @@ class AppViewModel @Inject constructor(
             playbackClient.seek(0)
             return
         }
+        if (playbackClient.playlistSize() > 1) { playbackClient.previous(); return }
         val queue = _uiState.value.queue
         val index = queue.indexOfFirst { it.id == _uiState.value.current?.id }
         if (index > 0) playbackClient.play(queue[index - 1]) else playbackClient.seek(0)
@@ -191,13 +209,32 @@ class AppViewModel @Inject constructor(
     private fun cycleTimer() {
         val current = playbackClient.sleepTimerSeconds.value
         val minutes = when {
+            playbackClient.sleepAtEpisodeEnd.value -> null // OFF
             current == 0 -> 15
             current <= 15 * 60 -> 30
             current <= 30 * 60 -> 45
             current <= 45 * 60 -> 60
-            else -> 0
+            else -> -1 // end of episode
         }
-        if (minutes == 0) playbackClient.cancelSleepTimer() else playbackClient.startSleepTimer(minutes)
+        when (minutes) {
+            null -> playbackClient.cancelSleepTimer()
+            -1 -> playbackClient.startSleepTimerAtEnd()
+            0 -> playbackClient.cancelSleepTimer()
+            else -> playbackClient.startSleepTimer(minutes)
+        }
+    }
+
+    private fun loadChapters(podcast: PodcastEntity) {
+        chaptersLoadedFor = podcast.id
+        val url = podcast.attributes["chaptersUrl"]
+        if (url.isNullOrBlank()) {
+            updateState { it.copy(chapters = emptyList()) }
+            return
+        }
+        viewModelScope.launch {
+            val chapters = chaptersCache.getOrPut(url) { repo.fetchChapters(url) }
+            if (_uiState.value.current?.id == podcast.id) updateState { it.copy(chapters = chapters) }
+        }
     }
 
     private fun updateState(transform: (UiState) -> UiState) {
@@ -214,6 +251,7 @@ class AppViewModel @Inject constructor(
     private fun emitEvent(event: UserEvent) { viewModelScope.launch { _userEvents.emit(event) } }
     fun connect() = Unit
     fun startSleepTimer(minutes: Int = 45) = playbackClient.startSleepTimer(minutes)
+    fun startSleepTimerAtEnd() = playbackClient.startSleepTimerAtEnd()
     fun resetSleepTimer() = playbackClient.resetSleepTimer()
     fun cancelSleepTimer() = playbackClient.cancelSleepTimer()
 
@@ -268,9 +306,17 @@ class AppViewModel @Inject constructor(
     fun seek(ms: Long) = dispatch(Action.Seek(ms.coerceAtLeast(0)))
     fun skip(seconds: Int) = dispatch(Action.Skip(seconds))
     fun setPlaybackSpeed(speed: Float) = dispatch(Action.SetSpeed(speed))
+    fun setSkipSilence(enabled: Boolean) = playbackClient.setSkipSilence(enabled)
+    fun setVolumeBoost(enabled: Boolean) = playbackClient.setBoost(enabled)
     fun unsubscribe(title: String) { viewModelScope.launch { repo.unsubscribe(title) } }
-    fun addToQueue(podcast: PodcastEntity) { viewModelScope.launch { repo.addToQueue(podcast.id) } }
-    fun removeFromQueue(podcast: PodcastEntity) { viewModelScope.launch { repo.removeFromQueue(podcast.id) } }
+    fun addToQueue(podcast: PodcastEntity) {
+        viewModelScope.launch { repo.addToQueue(podcast.id) }
+        playbackClient.enqueue(podcast)
+    }
+    fun removeFromQueue(podcast: PodcastEntity) {
+        viewModelScope.launch { repo.removeFromQueue(podcast.id) }
+        playbackClient.dequeue(podcast.id)
+    }
     fun resumeLastPlayed() { viewModelScope.launch { repo.getLastPlayedPodcast()?.let(::play) } }
     fun resumePlayback() = playbackClient.resume()
     fun playRadio() {
@@ -290,7 +336,10 @@ class AppViewModel @Inject constructor(
                 .onFailure { dispatch(Action.SetDownloadOp(podcast.id, AsyncOp.Failed(it.message ?: "Delete failed"))) }
         }
     }
-    fun playNext(podcast: PodcastEntity) { viewModelScope.launch { repo.addToQueueNext(podcast.id) } }
+    fun playNext(podcast: PodcastEntity) {
+        viewModelScope.launch { repo.addToQueueNext(podcast.id) }
+        playbackClient.enqueueNext(podcast)
+    }
     fun navigate(screen: Screen) = dispatch(Action.Navigate(screen))
     fun setPlayerOpen(open: Boolean) = dispatch(Action.SetPlayerOpen(open))
     fun setCarMode(enabled: Boolean) = dispatch(Action.SetCarMode(enabled))
@@ -314,5 +363,10 @@ class AppViewModel @Inject constructor(
     override fun onCleared() {
         playbackClient.cleanup()
         super.onCleared()
+    }
+
+    private companion object {
+        const val PROGRESS_SAVE_INTERVAL_MS = 5_000L
+        const val PROGRESS_SAVE_MIN_GAP_MS = 2_000L
     }
 }
