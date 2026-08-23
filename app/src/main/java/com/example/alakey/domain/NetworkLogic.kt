@@ -27,4 +27,12 @@ object NetworkLogic {
             ""
         }
     }
+
+    /** True if the body is an HTML page (error page, CDN challenge, login wall)
+     *  rather than an XML feed. Covers both `<!DOCTYPE html` and bare `<html>`
+     *  openings, case-insensitive, leading whitespace tolerated. */
+    fun looksLikeHtml(content: String): Boolean {
+        val head = content.trim().take(200).lowercase()
+        return head.startsWith("<!doctype html") || head.startsWith("<html")
+    }
 }

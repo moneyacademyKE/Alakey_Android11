@@ -69,38 +69,42 @@ class UniversalRepository @Inject constructor(
         }
     }
 
-    suspend fun subscribe(url: String): Result<Boolean> = safeApiCall {
-        var xmlContent: String? = null
-        
+    // Single pass: direct -> proxy fallback. No blanket retry — a parse failure is
+    // deterministic, so re-running subscribe would just re-download the same bytes.
+    suspend fun subscribe(url: String): Result<Boolean> = withContext(ioDispatcher) {
         try {
-            Log.d("UniversalRepository", "Attempting direct fetch for: $url")
-            xmlContent = fetchDirect(url)
-        } catch (e: Exception) {
-            Log.w("UniversalRepository", "Direct fetch failed: ${e.message}")
-        }
-
-        if (xmlContent == null || xmlContent.trim().startsWith("<!DOCTYPE html", ignoreCase = true) || !xmlContent.trim().startsWith("<")) {
-            try {
-                Log.d("UniversalRepository", "Attempting proxy fetch for: $url")
-                xmlContent = fetchWithProxy(url)
-            } catch (e: Exception) {
-                Log.w("UniversalRepository", "Proxy fetch failed: ${e.message}")
-            }
-        }
-
-        if (xmlContent == null || xmlContent.trim().startsWith("<!DOCTYPE html", ignoreCase = true) || !xmlContent.trim().startsWith("<")) {
-            throw Exception("Failed to fetch valid feed content")
-        }
-        
-        val items = RssParser.parse(xmlContent, url)
-        if (items.isNotEmpty()) {
+            val xmlContent = fetchFeedWithFallback(url)
+            val items = RssParser.parse(xmlContent, url)
+            if (items.isEmpty()) throw Exception("No episodes found in feed")
             dao.insertEpisodes(items)
             eventLogDao.logEvent(EventLogEntity(type = "SUBSCRIBE_SUCCESS", payload = url, status = "COMPLETED", timestamp = System.currentTimeMillis()))
             Log.d("UniversalRepository", "Successfully subscribed to $url, ${items.size} items found.")
-            true
-        } else {
-            throw Exception("No episodes found in feed")
+            Result.success(true)
+        } catch (e: Exception) {
+            Log.e("UniversalRepository", "Subscribe failed for $url", e)
+            Result.failure(e)
         }
+    }
+
+    /** Direct fetch first; proxy only if direct fails. Each fetcher validates its own
+     *  HTTP status and rejects HTML bodies, so this returns feed-or-throws. */
+    private suspend fun fetchFeedWithFallback(url: String): String {
+        var lastError: Exception? = null
+        try {
+            Log.d("UniversalRepository", "Attempting direct fetch for: $url")
+            return fetchDirect(url)
+        } catch (e: Exception) {
+            Log.w("UniversalRepository", "Direct fetch failed: ${e.message}")
+            lastError = e
+        }
+        try {
+            Log.d("UniversalRepository", "Attempting proxy fetch for: $url")
+            return fetchWithProxy(url)
+        } catch (e: Exception) {
+            Log.w("UniversalRepository", "Proxy fetch failed: ${e.message}")
+            lastError = e
+        }
+        throw lastError ?: Exception("Failed to fetch valid feed content")
     }
 
     suspend fun syncAll() = syncMutex.withLock {
@@ -137,15 +141,22 @@ class UniversalRepository @Inject constructor(
     private suspend fun fetchWithProxy(url: String): String = withContext(Dispatchers.IO) {
         val request = Request.Builder().url("https://api.allorigins.win/get?url=$url").build()
         client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw Exception("Proxy HTTP ${response.code} for $url")
             val json = response.body?.string() ?: throw Exception("Empty proxy response")
-            com.example.alakey.domain.NetworkLogic.extractProxyContent(json)
+            val content = com.example.alakey.domain.NetworkLogic.extractProxyContent(json)
+            if (content.isEmpty()) throw Exception("Proxy returned no content for $url")
+            if (com.example.alakey.domain.NetworkLogic.looksLikeHtml(content)) throw Exception("Proxy returned HTML, not a feed")
+            content
         }
     }
 
     private suspend fun fetchDirect(url: String): String = withContext(Dispatchers.IO) {
         val request = Request.Builder().url(url).build()
         client.newCall(request).execute().use { response ->
-            response.body?.string() ?: throw Exception("Empty response body")
+            if (!response.isSuccessful) throw Exception("HTTP ${response.code} for $url")
+            val body = response.body?.string() ?: throw Exception("Empty response body")
+            if (com.example.alakey.domain.NetworkLogic.looksLikeHtml(body)) throw Exception("Received HTML page, not a feed")
+            body
         }
     }
 
@@ -164,19 +175,30 @@ class UniversalRepository @Inject constructor(
         }
     }
 
-    suspend fun downloadAudio(podcastId: String): Result<String> = safeApiCall {
+    // Resumable download: network paths (esp. cellular) stall mid-stream on large files.
+    // Each attempt resumes from the bytes already on disk via Range; retries therefore
+    // make forward progress instead of restarting from byte 0.
+    suspend fun downloadAudio(podcastId: String): Result<String> = safeApiCall(retries = 5, initialDelay = 1000) {
          val podcast = dao.getPodcastById(podcastId) ?: throw Exception("Podcast not found")
          if (podcast.audioUrl.isEmpty()) throw Exception("No audio URL")
-         
-         val request = Request.Builder().url(podcast.audioUrl).build()
+
+         val file = File(context.filesDir, "${fileNameFor(podcastId)}.mp3")
+         val partial = if (file.exists()) file.length() else 0L
+         val request = Request.Builder()
+             .url(podcast.audioUrl)
+             .header("User-Agent", "Mozilla/5.0 (Android 16; Mobile) Alakey/1.0")
+             .apply { if (partial > 0) header("Range", "bytes=$partial-") }
+             .build()
          client.newCall(request).execute().use { response ->
-             if (!response.isSuccessful) throw Exception("Download failed: ${response.code}")
-             
-             val file = File(context.filesDir, "${podcastId}.mp3")
-             val body = response.body ?: throw Exception("Empty response body")
-             body.byteStream().use { inputStream ->
-                 FileOutputStream(file).use { output ->
-                     inputStream.copyTo(output)
+             when {
+                 response.code == 416 -> { /* range unsatisfiable: file already complete */ }
+                 !response.isSuccessful -> throw Exception("Download failed: ${response.code}")
+                 else -> {
+                     val body = response.body ?: throw Exception("Empty response body")
+                     // 206 = server honored Range -> append; 200 = full body -> overwrite
+                     FileOutputStream(file, response.code == 206).use { output ->
+                         body.byteStream().use { it.copyTo(output) }
+                     }
                  }
              }
              dao.updateAudioPath(podcastId, file.absolutePath)
@@ -184,6 +206,14 @@ class UniversalRepository @Inject constructor(
              file.absolutePath
          }
     }
+
+    /** Stable filesystem name derived from the episode id (which is a URL).
+     *  Never build paths by concatenating the id itself — ids contain '://'. */
+    private fun fileNameFor(id: String): String =
+        java.security.MessageDigest.getInstance("MD5")
+            .digest(id.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+            .take(16)
 
     suspend fun unsubscribe(title: String) = withContext(Dispatchers.IO) {
         val episodes = dao.getEpisodesByTitle(title)
