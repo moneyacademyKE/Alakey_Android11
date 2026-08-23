@@ -31,4 +31,7 @@ class FactStore @Inject constructor(private val dbSystem: com.example.alakey.sys
             .maxByOrNull { it.tx }
             ?.value
     }
+
+    /** Retention: collapse history to the latest fact per (entityId, attribute). */
+    suspend fun compact() = factDao.compact()
 }

@@ -39,13 +39,12 @@ object InformationModel {
             }
         }
 
-        return base.copy(
-            progress = progress,
-            isDownloaded = isDownloaded,
-            isInQueue = isInQueue,
-            queueOrder = queueOrder,
-            lastPlayed = lastPlayed,
-            audioUrl = audioUrl
-        )
+        val hydrated = base.copy(audioUrl = audioUrl)
+        hydrated.progress = progress
+        hydrated.isDownloaded = isDownloaded
+        hydrated.isInQueue = isInQueue
+        hydrated.queueOrder = queueOrder
+        hydrated.lastPlayed = lastPlayed
+        return hydrated
     }
 }

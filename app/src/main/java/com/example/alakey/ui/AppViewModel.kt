@@ -67,6 +67,8 @@ class AppViewModel @Inject constructor(
         data object Pop : Action
         data class SetPlayerOpen(val isOpen: Boolean) : Action
         data class Play(val podcast: PodcastEntity) : Action
+        /** Restore last episode at its saved position WITHOUT playing — data, not intent (#49). */
+        data class Restore(val podcast: PodcastEntity) : Action
         data object TogglePlay : Action
         data class Seek(val ms: Long) : Action
         data class Skip(val sec: Int) : Action
@@ -112,6 +114,8 @@ class AppViewModel @Inject constructor(
     private val chaptersCache = ConcurrentHashMap<String, List<Chapter>>()
 
     init {
+        // Facts are append-only; collapse superseded rows once per app open (#57).
+        viewModelScope.launch { repo.compactFacts() }
         viewModelScope.launch { playbackClient.playbackEnded.collect { playNextEpisode() } }
         viewModelScope.launch {
             repo.library.collect { library ->
@@ -168,6 +172,7 @@ class AppViewModel @Inject constructor(
     private fun handleEffects(action: Action) {
         when (action) {
             is Action.Play -> playbackClient.play(action.podcast, _uiState.value.queue)
+            is Action.Restore -> playbackClient.play(action.podcast, _uiState.value.queue, autoplay = false)
             Action.TogglePlay -> playbackClient.togglePlay()
             is Action.Seek -> playbackClient.seek(action.ms)
             is Action.Skip -> playbackClient.skip(action.sec)
@@ -229,7 +234,7 @@ class AppViewModel @Inject constructor(
 
     private fun loadChapters(podcast: PodcastEntity) {
         chaptersLoadedFor = podcast.id
-        val url = podcast.attributes["chaptersUrl"]
+        val url = podcast.chaptersUrl
         if (url.isNullOrBlank()) {
             updateState { it.copy(chapters = emptyList()) }
             return
@@ -328,7 +333,7 @@ class AppViewModel @Inject constructor(
         viewModelScope.launch { repo.removeFromQueue(podcast.id) }
         playbackClient.dequeue(podcast.id)
     }
-    fun resumeLastPlayed() { viewModelScope.launch { repo.getLastPlayedPodcast()?.let(::play) } }
+    fun resumeLastPlayed() { viewModelScope.launch { repo.getLastPlayedPodcast()?.let { dispatch(Action.Restore(it)) } } }
     fun resumePlayback() = playbackClient.resume()
     fun playRadio() {
         viewModelScope.launch {

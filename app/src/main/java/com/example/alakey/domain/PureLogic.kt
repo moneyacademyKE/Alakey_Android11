@@ -19,7 +19,7 @@ object PureLogic {
             
             // Extract policy from the latest episode (proxy for Feed config)
             val latestEp = episodes.maxByOrNull { parseDate(it.pubDate) }
-            val policy = latestEp?.attributes?.get("downloadPolicy") ?: "latest"
+            val policy = latestEp?.downloadPolicy ?: "latest"
             
             when (policy) {
                 "latest" -> {

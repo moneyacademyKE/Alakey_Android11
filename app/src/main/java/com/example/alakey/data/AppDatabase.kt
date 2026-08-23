@@ -3,7 +3,7 @@ package com.example.alakey.data
 import androidx.room.Database
 import androidx.room.RoomDatabase
 
-@Database(entities = [PodcastEntity::class, EventLogEntity::class, FactEntity::class], version = 12, exportSchema = false)
+@Database(entities = [PodcastEntity::class, EventLogEntity::class, FactEntity::class], version = 13, exportSchema = false)
 @androidx.room.TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun dao(): PodcastDao
@@ -28,14 +28,5 @@ class Converters {
     fun toPalette(value: String): PodcastPalette? {
         if (value.isEmpty()) return null
         return com.google.gson.Gson().fromJson(value, PodcastPalette::class.java)
-    }
-
-    @androidx.room.TypeConverter
-    fun fromAttributes(value: Map<String, String>): String = com.google.gson.Gson().toJson(value)
-
-    @androidx.room.TypeConverter
-    fun toAttributes(value: String): Map<String, String> {
-        val type = object : com.google.gson.reflect.TypeToken<Map<String, String>>() {}.type
-        return com.google.gson.Gson().fromJson(value, type) ?: emptyMap()
     }
 }
