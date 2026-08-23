@@ -1,0 +1,15 @@
+com.example.alakey.wear-protolayout-expression-1.2.0-0 /Users/moe/.gradle/caches/8.13/transforms/05fb7d566b39daa206601e8616000b3f/transformed/protolayout-expression-1.2.0/res
+com.example.alakey.wear-play-services-base-18.5.0-1 /Users/moe/.gradle/caches/8.13/transforms/13a1b8d44d1dd57e0b97bedca341a90d/transformed/play-services-base-18.5.0/res
+com.example.alakey.wear-play-services-basement-18.4.0-2 /Users/moe/.gradle/caches/8.13/transforms/334d912b018023fae4112efc298c7897/transformed/play-services-basement-18.4.0/res
+com.example.alakey.wear-tiles-1.4.0-3 /Users/moe/.gradle/caches/8.13/transforms/6e294f50ec0f30c9bd6cfdebe10e6b64/transformed/tiles-1.4.0/res
+com.example.alakey.wear-protolayout-1.2.0-4 /Users/moe/.gradle/caches/8.13/transforms/82cc0af30e1b49a2afc1f80bfa873d61/transformed/protolayout-1.2.0/res
+com.example.alakey.wear-core-1.2.0-5 /Users/moe/.gradle/caches/8.13/transforms/9a9b9104ca53710b0f9bb367803a71ac/transformed/core-1.2.0/res
+com.example.alakey.wear-annotation-experimental-1.4.1-6 /Users/moe/.gradle/caches/8.13/transforms/b786ff7271b86612da633cfd1dd1f540/transformed/annotation-experimental-1.4.1/res
+com.example.alakey.wear-pngs-7 /Users/moe/Desktop/Alakey_Android11/wear/build/generated/res/pngs/debug
+com.example.alakey.wear-resValues-8 /Users/moe/Desktop/Alakey_Android11/wear/build/generated/res/resValues/debug
+com.example.alakey.wear-updated_navigation_xml-9 /Users/moe/Desktop/Alakey_Android11/wear/build/generated/updated_navigation_xml/debug
+com.example.alakey.wear-packageDebugResources-10 /Users/moe/Desktop/Alakey_Android11/wear/build/intermediates/incremental/debug/packageDebugResources/merged.dir
+com.example.alakey.wear-packageDebugResources-11 /Users/moe/Desktop/Alakey_Android11/wear/build/intermediates/incremental/debug/packageDebugResources/stripped.dir
+com.example.alakey.wear-debug-12 /Users/moe/Desktop/Alakey_Android11/wear/build/intermediates/merged_res/debug/mergeDebugResources
+com.example.alakey.wear-debug-13 /Users/moe/Desktop/Alakey_Android11/wear/src/debug/res
+com.example.alakey.wear-main-14 /Users/moe/Desktop/Alakey_Android11/wear/src/main/res

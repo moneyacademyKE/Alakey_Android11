@@ -21,4 +21,6 @@ dependencyResolutionManagement {
 
 rootProject.name = "Alakey"
 include(":app")
+include(":wear")
+include(":tile-contract")
  

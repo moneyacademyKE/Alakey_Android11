@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.example.alakey.wear"
+    android:versionCode="1"
+    android:versionName="2.4.0" >
+
+    <uses-sdk
+        android:minSdkVersion="30"
+        android:targetSdkVersion="36" />
+
+    <uses-feature
+        android:name="android.hardware.type.watch"
+        android:required="true" />
+
+    <queries>
+        <intent>
+            <action android:name="androidx.wear.tiles.action.BIND_UPDATE_REQUESTER" />
+        </intent>
+    </queries>
+
+    <application
+        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
+        android:debuggable="true"
+        android:extractNativeLibs="false"
+        android:label="Alakey"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.DeviceDefault" >
+        <service
+            android:name="com.example.alakey.wear.NowPlayingTileService"
+            android:description="@string/tile_description"
+            android:exported="true"
+            android:label="Alakey"
+            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER" >
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+            </intent-filter>
+
+            <meta-data
+                android:name="androidx.wear.tiles.PREVIEW"
+                android:resource="@drawable/tile_preview" />
+        </service>
+        <service
+            android:name="com.example.alakey.wear.NowPlayingDataListenerService"
+            android:exported="true" >
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.BIND_LISTENER" />
+            </intent-filter>
+        </service>
+
+        <activity
+            android:name="com.example.alakey.wear.ToggleActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.NoDisplay" />
+
+        <uses-library
+            android:name="wear-sdk"
+            android:required="false" />
+
+        <activity
+            android:name="com.google.android.gms.common.api.GoogleApiActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <meta-data
+            android:name="com.google.android.gms.version"
+            android:value="@integer/google_play_services_version" />
+    </application>
+
+</manifest>
