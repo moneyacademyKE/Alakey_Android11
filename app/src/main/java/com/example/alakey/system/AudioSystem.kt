@@ -12,39 +12,23 @@ import javax.inject.Singleton
 class AudioSystem @Inject constructor(
     @ApplicationContext private val context: Context
 ) : Component {
-
     var player: ExoPlayer? = null
         private set
-        
-    private var loudnessEnhancer: android.media.audiofx.LoudnessEnhancer? = null
 
     override fun start() {
         if (player != null) return
-
-        val attr = AudioAttributes.Builder()
+        val attributes = AudioAttributes.Builder()
             .setContentType(C.AUDIO_CONTENT_TYPE_SPEECH)
             .setUsage(C.USAGE_MEDIA)
             .build()
-            
         player = ExoPlayer.Builder(context)
-            .setAudioAttributes(attr, true)
+            .setAudioAttributes(attributes, true)
             .setHandleAudioBecomingNoisy(true)
-            .setSkipSilenceEnabled(true)
             .build()
-
-        try {
-            loudnessEnhancer = android.media.audiofx.LoudnessEnhancer(player!!.audioSessionId)
-            loudnessEnhancer?.setTargetGain(200)
-            loudnessEnhancer?.enabled = true
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
     }
 
     override fun stop() {
         player?.release()
         player = null
-        loudnessEnhancer?.release()
-        loudnessEnhancer = null
     }
 }

@@ -1,16 +1,15 @@
 package com.example.alakey.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.material.icons.rounded.Unsubscribe
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,50 +29,30 @@ fun GlassFolderHeader(
     onToggle: () -> Unit,
     onUnsubscribe: () -> Unit
 ) {
-    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-        PrismaticGlass(Modifier.fillMaxWidth().height(90.dp).glassShimmer()) {
-            Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-                // Main toggle area
-                Row(
-                    Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .pressScale()
-                        .clickable { onToggle() }
-                        .padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    AsyncImage(
-                        imageUrl,
-                        null,
-                        Modifier.size(64.dp).clip(RoundedCornerShape(16.dp)),
-                        contentScale = ContentScale.Crop
-                    )
-                    Spacer(Modifier.width(16.dp))
-                    Column(Modifier.weight(1f)) {
-                        NebulaText(title, MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            if (isExpanded) "Tap to collapse" else "$count episodes",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.White.copy(0.6f)
-                        )
-                    }
-                    Icon(
-                        if (isExpanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
-                        null,
-                        tint = Color.Cyan
-                    )
+    var confirmUnsubscribe by remember { mutableStateOf(false) }
+    PrismaticGlass(Modifier.fillMaxWidth().padding(vertical = 8.dp).heightIn(min = 90.dp)) {
+        Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.weight(1f).fillMaxHeight().clickable(onClick = onToggle).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                AsyncImage(imageUrl, null, Modifier.size(64.dp).clip(RoundedCornerShape(16.dp)), contentScale = ContentScale.Crop)
+                Spacer(Modifier.width(16.dp))
+                Column(Modifier.weight(1f)) {
+                    NebulaText(title, MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
+                    Text("$count ${if (count == 1) "episode" else "episodes"}", color = Color.White.copy(.6f), style = MaterialTheme.typography.bodySmall)
                 }
-                
-                // Secondary action area (Delete)
-                IconButton(
-                    onClick = onUnsubscribe,
-                    modifier = Modifier.padding(end = 8.dp)
-                ) {
-                    Icon(Icons.Rounded.Delete, null, tint = Color.Red.copy(0.6f))
-                }
+                Icon(if (isExpanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown, if (isExpanded) "Collapse $title" else "Expand $title", tint = Color.Cyan)
+            }
+            IconButton(onClick = { confirmUnsubscribe = true }, modifier = Modifier.size(48.dp)) {
+                Icon(Icons.Rounded.Unsubscribe, "Unsubscribe from $title", tint = Color.Red.copy(.8f))
             }
         }
+    }
+    if (confirmUnsubscribe) {
+        AlertDialog(
+            onDismissRequest = { confirmUnsubscribe = false },
+            title = { Text("Unsubscribe from $title?") },
+            text = { Text("This removes the show's episodes from your library.") },
+            confirmButton = { TextButton(onClick = { confirmUnsubscribe = false; onUnsubscribe() }) { Text("Unsubscribe") } },
+            dismissButton = { TextButton(onClick = { confirmUnsubscribe = false }) { Text("Cancel") } }
+        )
     }
 }

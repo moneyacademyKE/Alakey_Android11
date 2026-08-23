@@ -29,6 +29,15 @@ class PlaybackStateRepository @Inject constructor(
         factStore.assert(id, InformationModel.ATTR_QUEUE_ORDER, System.currentTimeMillis().toString())
     }
 
+    suspend fun addToQueueNext(id: String) {
+        val queue = factStore.hydrateAll(dao.getAllPodcasts().firstValue())
+            .filter { it.isInQueue && it.id != id }
+            .sortedBy { it.queueOrder }
+        val firstOrder = queue.firstOrNull()?.queueOrder ?: System.currentTimeMillis()
+        factStore.assert(id, InformationModel.ATTR_IN_QUEUE, "true")
+        factStore.assert(id, InformationModel.ATTR_QUEUE_ORDER, (firstOrder - 1).toString())
+    }
+
     suspend fun removeFromQueue(id: String) {
         factStore.assert(id, InformationModel.ATTR_IN_QUEUE, "false")
     }

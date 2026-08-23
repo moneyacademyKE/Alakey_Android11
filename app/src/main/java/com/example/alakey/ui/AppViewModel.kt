@@ -1,23 +1,29 @@
 package com.example.alakey.ui
 
 import android.content.Context
+import android.graphics.Color as AndroidColor
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.alakey.data.EventLogEntity
 import com.example.alakey.data.ItunesSearchResult
 import com.example.alakey.data.PodcastEntity
 import com.example.alakey.data.UniversalRepository
-import com.example.alakey.data.EventLogEntity
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import java.io.File
+import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
-import androidx.compose.ui.graphics.toArgb
-import android.graphics.Color as AndroidColor
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 @HiltViewModel
 class AppViewModel @Inject constructor(
@@ -26,7 +32,6 @@ class AppViewModel @Inject constructor(
     private val paletteExtractor: PaletteExtractor,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
-    
     enum class Screen { Library, Marketplace, Inbox, Queue }
 
     data class UiState(
@@ -34,482 +39,280 @@ class AppViewModel @Inject constructor(
         val isPlayerOpen: Boolean = false,
         val isCarMode: Boolean = false,
         val activeFilter: String = "All",
-        
         val podcasts: List<PodcastEntity> = emptyList(),
         val optimisticPodcasts: List<PodcastEntity> = emptyList(),
         val current: PodcastEntity? = null,
         val isPlaying: Boolean = false,
         val currentTime: Long = 0,
         val duration: Long = 1,
-        val speed: Float = 1.0f,
+        val speed: Float = 1f,
         val queue: List<PodcastEntity> = emptyList(),
         val inbox: List<PodcastEntity> = emptyList(),
         val amplitude: Float = 0f,
         val dominantColor: Int = AndroidColor.CYAN,
         val vibrantColor: Int = AndroidColor.CYAN,
         val mutedColor: Int = AndroidColor.GRAY,
-        val sleepTimerSeconds: Int = 0
+        val sleepTimerSeconds: Int = 0,
+        val marketOps: Map<String, AsyncOp> = emptyMap(),
+        val downloadOps: Map<String, AsyncOp> = emptyMap()
     )
 
-    private val _uiState = MutableStateFlow(UiState())
-    val uiState: StateFlow<UiState> = _uiState.asStateFlow()
-    
-    // Epochal Time Travel (History Tape)
-    private val _history = androidx.compose.runtime.mutableStateListOf<UiState>()
-    val history: List<UiState> get() = _history
-    
-    private fun updateState(function: (UiState) -> UiState) {
-        _uiState.update { current ->
-            val newState = function(current)
-            if (newState != current) {
-                _history.add(newState)
-                // Keep history finite (simplicity constraint)
-                if (_history.size > 50) _history.removeAt(0)
-            }
-            newState
-        }
-    }
-    
-    fun travelTo(index: Int) {
-         if (index in _history.indices) {
-             _uiState.value = _history[index] // Set value directly (no new history record)
-         }
-    }
-
-    private val _searchResults = MutableStateFlow<List<ItunesSearchResult>>(emptyList())
-    val searchResults: StateFlow<List<ItunesSearchResult>> = _searchResults.asStateFlow()
-    
-    // Observability
-    private val _logs = MutableStateFlow<List<EventLogEntity>>(emptyList())
-    val logs: StateFlow<List<EventLogEntity>> = _logs.asStateFlow()
-
-    val sleepTimerSeconds: StateFlow<Int> = playbackClient.sleepTimerSeconds
-
-    sealed interface UserEvent {
-        data class ShowMessage(val message: String) : UserEvent
-        data class ShowError(val message: String) : UserEvent
-    }
-    
-    private val _userEvents = MutableSharedFlow<UserEvent>()
-    val userEvents: SharedFlow<UserEvent> = _userEvents.asSharedFlow()
-
-    // --- Phase 6: Logical Frontend (Interceptor Chain) ---
     sealed interface Action {
         data class Navigate(val screen: Screen) : Action
-        object Pop : Action
+        data object Pop : Action
         data class SetPlayerOpen(val isOpen: Boolean) : Action
         data class Play(val podcast: PodcastEntity) : Action
-        object TogglePlay : Action
+        data object TogglePlay : Action
         data class Seek(val ms: Long) : Action
         data class Skip(val sec: Int) : Action
         data class SetSpeed(val speed: Float) : Action
         data class SetFilter(val filter: String) : Action
         data class SetCarMode(val enabled: Boolean) : Action
-        object PlayNextInQueue : Action
-        object PlayPreviousInQueue : Action
-        object CycleSleepTimer : Action
-        
-        // Optimistic Actions
-        data class Subscribe(val feedUrl: String, val title: String, val imageUrl: String) : Action
-        data class Rollback(val historyIndex: Int, val error: String) : Action
+        data object PlayNextInQueue : Action
+        data object PlayPreviousInQueue : Action
+        data object CycleSleepTimer : Action
+        data class Subscribe(
+            val feedUrl: String,
+            val title: String,
+            val imageUrl: String,
+            val marketQuery: String? = null
+        ) : Action
+        data class SetMarketOp(val query: String, val operation: AsyncOp) : Action
+        data class SetDownloadOp(val episodeId: String, val operation: AsyncOp) : Action
+        data class Rollback(val feedUrl: String, val marketQuery: String?, val error: String) : Action
     }
-    
-    // Interceptor: (Action, State) -> Action? or Effect?
-    // Simplified: dispatch handles side effects vs pure state updates.
-    fun dispatch(action: Action) {
-        logAction(action) // Interceptor 1: Log
-        
-        updateState { AppReducer.reduce(it, action) }
 
-        when(action) {
-            is Action.Rollback -> {
-                travelTo(action.historyIndex)
-                emitEvent(UserEvent.ShowError("Rollback: ${action.error}"))
+    sealed interface UserEvent {
+        data class ShowMessage(val message: String) : UserEvent
+        data class ShowError(val message: String) : UserEvent
+    }
+
+    private val _uiState = MutableStateFlow(UiState())
+    val uiState: StateFlow<UiState> = _uiState.asStateFlow()
+    private val _searchResults = MutableStateFlow<List<ItunesSearchResult>>(emptyList())
+    val searchResults: StateFlow<List<ItunesSearchResult>> = _searchResults.asStateFlow()
+    private val _logs = MutableStateFlow<List<EventLogEntity>>(emptyList())
+    val logs: StateFlow<List<EventLogEntity>> = _logs.asStateFlow()
+    private val _userEvents = MutableSharedFlow<UserEvent>()
+    val userEvents: SharedFlow<UserEvent> = _userEvents.asSharedFlow()
+    val sleepTimerSeconds: StateFlow<Int> = playbackClient.sleepTimerSeconds
+
+    private val _history = androidx.compose.runtime.mutableStateListOf<UiState>()
+    val history: List<UiState> get() = _history
+    private var searchJob: Job? = null
+    private val searchGeneration = AtomicLong(0)
+
+    init {
+        viewModelScope.launch { playbackClient.playbackEnded.collect { playNextEpisode() } }
+        viewModelScope.launch {
+            repo.library.collect { library ->
+                updateState { state ->
+                    val queue = library.filter { it.isInQueue }.sortedBy { it.queueOrder }
+                    val inbox = library.filter { !it.isInQueue && it.progress == 0L }
+                    val current = state.current?.let { old -> library.find { it.id == old.id } ?: old }
+                    state.copy(podcasts = library, queue = queue, inbox = inbox, current = current)
+                }
             }
-            else -> {}
         }
+        viewModelScope.launch {
+            playbackClient.state.collect { playback ->
+                val known = _uiState.value.podcasts + _uiState.value.optimisticPodcasts
+                val podcast = known.find { it.id == playback.currentMediaId }
+                updateState { state ->
+                    state.copy(
+                        current = podcast ?: state.current,
+                        isPlaying = playback.isPlaying,
+                        currentTime = playback.currentPosition,
+                        duration = playback.duration,
+                        speed = playback.playbackSpeed,
+                        amplitude = playback.amplitude
+                    )
+                }
+                if (podcast != null && podcast.imageUrl != _uiState.value.current?.imageUrl) extractColor(podcast.imageUrl)
+                if (playback.isPlaying && podcast != null && playback.currentPosition > 0) {
+                    repo.updateProgress(podcast.id, playback.currentPosition)
+                    repo.updateLastPlayed(podcast.id, System.currentTimeMillis())
+                }
+            }
+        }
+        viewModelScope.launch {
+            playbackClient.sleepTimerSeconds.collect { seconds -> updateState { it.copy(sleepTimerSeconds = seconds) } }
+        }
+    }
 
-        // Interceptor 3: Effects (Side Effects)
+    fun dispatch(action: Action) {
+        updateState { AppReducer.reduce(it, action) }
+        if (action is Action.Rollback) emitEvent(UserEvent.ShowError(action.error))
         handleEffects(action)
-        
-        // Post-Action Observability: Refresh logs if action might have logged something
-        // Just eager refresh for now (Optimization later)
-        refreshLogs()
     }
-    
-    private fun logAction(action: Action) {
-        if (action !is Action.Seek) { // Reduce noise
-             Log.d("Dispatcher", "Action: $action")
-        }
-    }
-    
+
     private fun handleEffects(action: Action) {
-        when(action) {
+        when (action) {
             is Action.Play -> playbackClient.play(action.podcast)
-            is Action.TogglePlay -> playbackClient.togglePlay()
+            Action.TogglePlay -> playbackClient.togglePlay()
             is Action.Seek -> playbackClient.seek(action.ms)
             is Action.Skip -> playbackClient.skip(action.sec)
             is Action.SetSpeed -> playbackClient.setSpeed(action.speed)
-            is Action.Subscribe -> {
-                val previousIndex = _history.size - 2
-                viewModelScope.launch {
-                    repo.subscribe(action.feedUrl)
-                        .onSuccess {
-                            updateState { s -> s.copy(optimisticPodcasts = s.optimisticPodcasts.filter { it.feedUrl != action.feedUrl }) }
-                            emitEvent(UserEvent.ShowMessage("Subscribed!"))
-                        }
-                        .onFailure {
-                            dispatch(Action.Rollback(previousIndex, it.message ?: "Network error"))
-                        }
-                }
-            }
-            is Action.PlayNextInQueue -> {
-                val queue = _uiState.value.queue
-                val current = _uiState.value.current
-                if (queue.isNotEmpty()) {
-                    val idx = queue.indexOfFirst { it.id == current?.id }
-                    if (idx != -1 && idx < queue.size - 1) {
-                         playbackClient.play(queue[idx + 1])
-                    } else {
-                         emitEvent(UserEvent.ShowMessage("End of queue"))
+            is Action.Subscribe -> viewModelScope.launch {
+                repo.subscribe(action.feedUrl)
+                    .onSuccess {
+                        updateState { it.copy(optimisticPodcasts = it.optimisticPodcasts.filterNot { p -> p.feedUrl == action.feedUrl }) }
+                        action.marketQuery?.let { dispatch(Action.SetMarketOp(it, AsyncOp.Done)) }
+                        emitEvent(UserEvent.ShowMessage("Subscribed"))
                     }
-                }
+                    .onFailure { error ->
+                        dispatch(Action.Rollback(action.feedUrl, action.marketQuery, error.message ?: "Subscription failed"))
+                    }
             }
-            is Action.PlayPreviousInQueue -> {
-                 // Classic Logic: If > 5s, restart. Else prev.
-                 val pos = playbackClient.state.value.currentPosition
-                 if (pos > 5000) {
-                     playbackClient.seek(0)
-                 } else {
-                     val queue = _uiState.value.queue
-                     val current = _uiState.value.current
-                     if (queue.isNotEmpty()) {
-                         val idx = queue.indexOfFirst { it.id == current?.id }
-                         if (idx > 0) {
-                             playbackClient.play(queue[idx - 1])
-                         } else {
-                             playbackClient.seek(0)
-                         }
-                     }
-                 }
-            }
-            is Action.CycleSleepTimer -> {
-                val current = playbackClient.sleepTimerSeconds.value
-                val newDuration = when {
-                    current == 0 -> 15
-                    current <= 15 * 60 -> 30
-                    current <= 30 * 60 -> 45
-                    current <= 45 * 60 -> 60
-                    else -> 0
-                }
-                if (newDuration > 0) {
-                    playbackClient.startSleepTimer(newDuration)
-                    emitEvent(UserEvent.ShowMessage("Sleep Timer: ${newDuration}m"))
-                } else {
-                    playbackClient.resetSleepTimer() // actually this resets to initial, we want cancel.
-                    // Let's assume startSleepTimer(0) cancels or we need a cancel. 
-                    // Reuse startSleepTimer logic but need to ensure it handles 0 or cancel.
-                    // Checking PlaybackClient.. startSleepTimer loop condition is > 0.
-                    // So we can just set it to 0. 
-                    // But PlaybackClient doesn't expose a "Cancel" directly other than cleanup.
-                    // Let's stick to startSleepTimer logic... wait, I need to check PlaybackClient again.
-                    // It has resetSleepTimer which resets to *initial*. 
-                    // I will implement a cancel logic by just calling startSleepTimer with 0 or a new method.
-                    // For now, let's assume setting it to 0 via startSleepTimer or a new method is needed.
-                    // I'll use startSleepTimer(0) and rely on the loop condition, hoping it handles it.
-                    // Looking at PlaybackClient again: Loop `while (_sleepTimerSeconds.value > 0)`.
-                    // So setting value to 0 will break loop.
-                    // But `startSleepTimer` sets `_sleepTimerSeconds.value = initialSleepDuration`.
-                    // So `startSleepTimer(0)` sets it to 0 and loop won't start (if check is before).
-                    // Correct.
-                    playbackClient.startSleepTimer(0)
-                    emitEvent(UserEvent.ShowMessage("Sleep Timer Off"))
-                }
-            }
-            else -> {}
+            Action.PlayNextInQueue -> playNextQueued()
+            Action.PlayPreviousInQueue -> playPreviousQueued()
+            Action.CycleSleepTimer -> cycleTimer()
+            else -> Unit
         }
     }
 
-    init {
-        // Playback Continuity
+    private fun playNextQueued() {
+        val queue = _uiState.value.queue
+        val index = queue.indexOfFirst { it.id == _uiState.value.current?.id }
+        if (index >= 0 && index + 1 < queue.size) playbackClient.play(queue[index + 1])
+        else emitEvent(UserEvent.ShowMessage("End of queue"))
+    }
+
+    private fun playPreviousQueued() {
+        if (playbackClient.state.value.currentPosition > 5_000) {
+            playbackClient.seek(0)
+            return
+        }
+        val queue = _uiState.value.queue
+        val index = queue.indexOfFirst { it.id == _uiState.value.current?.id }
+        if (index > 0) playbackClient.play(queue[index - 1]) else playbackClient.seek(0)
+    }
+
+    private fun cycleTimer() {
+        val current = playbackClient.sleepTimerSeconds.value
+        val minutes = when {
+            current == 0 -> 15
+            current <= 15 * 60 -> 30
+            current <= 30 * 60 -> 45
+            current <= 45 * 60 -> 60
+            else -> 0
+        }
+        if (minutes == 0) playbackClient.cancelSleepTimer() else playbackClient.startSleepTimer(minutes)
+    }
+
+    private fun updateState(transform: (UiState) -> UiState) {
+        _uiState.update { current ->
+            val next = transform(current)
+            if (next != current) {
+                _history.add(next)
+                if (_history.size > 50) _history.removeAt(0)
+            }
+            next
+        }
+    }
+
+    private fun emitEvent(event: UserEvent) { viewModelScope.launch { _userEvents.emit(event) } }
+    fun connect() = Unit
+    fun startSleepTimer(minutes: Int = 45) = playbackClient.startSleepTimer(minutes)
+    fun resetSleepTimer() = playbackClient.resetSleepTimer()
+    fun cancelSleepTimer() = playbackClient.cancelSleepTimer()
+
+    fun downloadEpisode(episodeId: String) {
+        dispatch(Action.SetDownloadOp(episodeId, AsyncOp.InFlight))
         viewModelScope.launch {
-            playbackClient.playbackEnded.collect {
-                playNextEpisode()
-            }
-        }
-
-        // Epochal Reconciler: repository exposes fact-hydrated values.
-        viewModelScope.launch {
-            repo.library.collect { hydratedLibrary ->
-                val hydratedQueue = hydratedLibrary.filter { it.isInQueue }.sortedBy { it.queueOrder }
-                val hydratedInbox = hydratedLibrary.filter { !it.isInQueue && it.progress == 0L }
-
-                updateState { s ->
-                    val currentId = s.current?.id
-                    val hydratedCurrent = if (currentId != null) {
-                        hydratedLibrary.find { it.id == currentId } ?: s.current
-                    } else s.current
-
-                    s.copy(
-                        podcasts = hydratedLibrary,
-                        queue = hydratedQueue,
-                        inbox = hydratedInbox,
-                        current = hydratedCurrent
-                    )
+            repo.downloadAudio(episodeId)
+                .onSuccess { dispatch(Action.SetDownloadOp(episodeId, AsyncOp.Done)) }
+                .onFailure { error ->
+                    Log.e("AppViewModel", "Download failure for $episodeId", error)
+                    dispatch(Action.SetDownloadOp(episodeId, AsyncOp.Failed(error.message ?: "Download failed")))
                 }
-            }
-        }
-
-        // Hydrate Playback State (Independent of Application Facts for now, as it's real-time hardware state)
-        viewModelScope.launch {
-            playbackClient.state.collect { pbState ->
-                val allKnown = _uiState.value.podcasts + _uiState.value.optimisticPodcasts
-                val podcast = allKnown.find { it.id == pbState.currentMediaId }
-                
-                updateState {
-                    it.copy(
-                        current = podcast ?: it.current,
-                        isPlaying = pbState.isPlaying,
-                        currentTime = pbState.currentPosition,
-                        duration = pbState.duration,
-                        speed = pbState.playbackSpeed,
-                        amplitude = pbState.amplitude
-                    )
-                }
-                
-                if (podcast != null && podcast.imageUrl != _uiState.value.current?.imageUrl) {
-                    extractColor(podcast.imageUrl)
-                }
-                
-                if (pbState.isPlaying && podcast != null && pbState.currentPosition > 0) {
-                     repo.updateProgress(podcast.id, pbState.currentPosition)
-                     repo.updateLastPlayed(podcast.id, System.currentTimeMillis())
-                }
-            }
-        }
-        
-        // Sleep Timer Sync
-        viewModelScope.launch {
-            playbackClient.sleepTimerSeconds.collect { seconds ->
-                updateState { it.copy(sleepTimerSeconds = seconds) }
-            }
         }
     }
 
-    private fun emitEvent(event: UserEvent) {
-        viewModelScope.launch { _userEvents.emit(event) }
-    }
-
-    fun connect() {
-        // No-op: Client connects on init. 
-    }
-
-    fun startSleepTimer(minutes: Int = 45) {
-        playbackClient.startSleepTimer(minutes)
-    }
-
-    fun resetSleepTimer() {
-        playbackClient.resetSleepTimer()
-    }
-
-    fun cancelSleepTimer() {
-        playbackClient.cancelSleepTimer()
-    }
-
-    fun downloadEpisode(podcastId: String) {
-        viewModelScope.launch {
-            repo.downloadAudio(podcastId)
-                .onFailure { e -> Log.e("AppViewModel", "Download failure for $podcastId", e) }
-        }
-    }
-
-    fun checkForAutoDownloads() {
-        viewModelScope.launch {
-            repo.runSmartDownloads()
-        }
-    }
-
-    override fun onCleared() {
-        super.onCleared()
-        playbackClient.cleanup()
-    }
-
-    fun importFeed(url: String) {
-        dispatch(Action.Subscribe(url, "RSS Feed", ""))
-    }
+    fun checkForAutoDownloads() { viewModelScope.launch { repo.runSmartDownloads() } }
+    fun importFeed(url: String) = dispatch(Action.Subscribe(url, "RSS Feed", ""))
 
     fun searchPodcasts(query: String) {
-        viewModelScope.launch {
-            repo.searchPodcasts(query)
-                .onSuccess { _searchResults.value = it }
-                .onFailure { emitEvent(UserEvent.ShowError("Search failed: ${it.message}")) }
+        searchJob?.cancel()
+        val normalized = query.trim()
+        if (normalized.isBlank()) {
+            _searchResults.value = emptyList()
+            return
         }
-    }
-
-    fun play(p: PodcastEntity) {
-        dispatch(Action.Play(p))
-    }
-
-    fun togglePlay() {
-        dispatch(Action.TogglePlay)
-    }
-
-    fun seek(ms: Long) {
-        dispatch(Action.Seek(ms))
-    }
-
-    fun skip(sec: Int) {
-        dispatch(Action.Skip(sec))
-    }
-
-    fun setPlaybackSpeed(speed: Float) {
-        dispatch(Action.SetSpeed(speed))
-    }
-
-    fun unsubscribe(title: String) {
-        viewModelScope.launch {
-            repo.unsubscribe(title)
+        searchJob = viewModelScope.launch {
+            delay(300)
+            val generation = searchGeneration.incrementAndGet()
+            repo.searchPodcasts(normalized)
+                .onSuccess { if (generation == searchGeneration.get()) _searchResults.value = it }
+                .onFailure { error ->
+                    if (generation == searchGeneration.get()) emitEvent(UserEvent.ShowError("Search failed: ${error.message}"))
+                }
         }
     }
 
     fun marketplaceSubscribe(query: String) {
+        dispatch(Action.SetMarketOp(query, AsyncOp.InFlight))
         viewModelScope.launch {
-            repo.searchPodcasts(query).onSuccess { results ->
-                if (results.isNotEmpty()) {
-                    val r = results.first()
-                    dispatch(Action.Subscribe(r.feedUrl, r.collectionName, r.artworkUrl100))
-                } else {
-                    emitEvent(UserEvent.ShowMessage("No results found for $query"))
+            repo.searchPodcasts(query)
+                .onSuccess { results ->
+                    val result = results.firstOrNull()
+                    if (result == null) dispatch(Action.SetMarketOp(query, AsyncOp.Failed("No results found")))
+                    else dispatch(Action.Subscribe(result.feedUrl, result.collectionName, result.artworkUrl100, query))
                 }
-            }.onFailure { emitEvent(UserEvent.ShowError("Search failed")) }
+                .onFailure { error -> dispatch(Action.SetMarketOp(query, AsyncOp.Failed(error.message ?: "Search failed"))) }
         }
     }
 
-    fun addToQueue(podcast: PodcastEntity) {
-        viewModelScope.launch {
-            repo.addToQueue(podcast.id)
-        }
-    }
-
-    fun removeFromQueue(podcast: PodcastEntity) {
-        viewModelScope.launch {
-            repo.removeFromQueue(podcast.id)
-        }
-    }
-
-    fun resumeLastPlayed() {
-        viewModelScope.launch {
-            repo.getLastPlayedPodcast()?.let { play(it) }
-        }
-    }
-    
-    fun resumePlayback() {
-        playbackClient.resume()
-    }
-
-    private fun extractColor(url: String) {
-        viewModelScope.launch {
-            val currentPodcast = _uiState.value.current
-            
-            // 1. Data-First: Check if we already have the fact stored
-            if (currentPodcast != null && currentPodcast.palette != null && currentPodcast.imageUrl == url) {
-                updateState { it.copy(
-                    dominantColor = currentPodcast.palette.dominant,
-                    vibrantColor = currentPodcast.palette.vibrant,
-                    mutedColor = currentPodcast.palette.muted
-                ) }
-                return@launch
-            }
-
-            val palette = paletteExtractor.extract(url)
-            if (palette != null) {
-                updateState { it.copy(
-                    dominantColor = palette.dominant,
-                    vibrantColor = palette.vibrant,
-                    mutedColor = palette.muted
-                ) }
-                if (currentPodcast != null) repo.savePalette(currentPodcast.id, palette)
-            } else {
-                Log.w("AppViewModel", "Color extraction failed for $url")
-            }
-        }
-    }
-
+    fun play(podcast: PodcastEntity) = dispatch(Action.Play(podcast))
+    fun togglePlay() = dispatch(Action.TogglePlay)
+    fun seek(ms: Long) = dispatch(Action.Seek(ms.coerceAtLeast(0)))
+    fun skip(seconds: Int) = dispatch(Action.Skip(seconds))
+    fun setPlaybackSpeed(speed: Float) = dispatch(Action.SetSpeed(speed))
+    fun unsubscribe(title: String) { viewModelScope.launch { repo.unsubscribe(title) } }
+    fun addToQueue(podcast: PodcastEntity) { viewModelScope.launch { repo.addToQueue(podcast.id) } }
+    fun removeFromQueue(podcast: PodcastEntity) { viewModelScope.launch { repo.removeFromQueue(podcast.id) } }
+    fun resumeLastPlayed() { viewModelScope.launch { repo.getLastPlayedPodcast()?.let(::play) } }
+    fun resumePlayback() = playbackClient.resume()
     fun playRadio() {
         viewModelScope.launch {
             val candidate = repo.getRadioCandidate()
-            if (candidate != null) {
-                repo.addToQueue(candidate.id)
-                play(candidate)
-                emitEvent(UserEvent.ShowMessage("Radio: Now playing ${candidate.episodeTitle}"))
-            } else {
-                emitEvent(UserEvent.ShowError("Radio silence. No unplayed episodes found."))
+            if (candidate == null) emitEvent(UserEvent.ShowError("No unplayed episodes found"))
+            else { repo.addToQueue(candidate.id); play(candidate) }
+        }
+    }
+    fun markPlayed(podcast: PodcastEntity) { viewModelScope.launch { repo.markPlayed(podcast) } }
+    fun markOlderPlayed(podcast: PodcastEntity) { viewModelScope.launch { repo.markOlderAsPlayed(podcast) } }
+    fun deleteDownload(podcast: PodcastEntity) {
+        dispatch(Action.SetDownloadOp(podcast.id, AsyncOp.InFlight))
+        viewModelScope.launch {
+            runCatching { repo.deleteDownload(podcast.id) }
+                .onSuccess { dispatch(Action.SetDownloadOp(podcast.id, AsyncOp.Done)) }
+                .onFailure { dispatch(Action.SetDownloadOp(podcast.id, AsyncOp.Failed(it.message ?: "Delete failed"))) }
+        }
+    }
+    fun playNext(podcast: PodcastEntity) { viewModelScope.launch { repo.addToQueueNext(podcast.id) } }
+    fun navigate(screen: Screen) = dispatch(Action.Navigate(screen))
+    fun setPlayerOpen(open: Boolean) = dispatch(Action.SetPlayerOpen(open))
+    fun setCarMode(enabled: Boolean) = dispatch(Action.SetCarMode(enabled))
+    fun setFilter(filter: String) = dispatch(Action.SetFilter(filter))
+    fun refreshLogs() { viewModelScope.launch { _logs.value = repo.getRecentLogs() } }
+    fun playNextEpisode() = dispatch(Action.PlayNextInQueue)
+    fun playPreviousEpisode() = dispatch(Action.PlayPreviousInQueue)
+    fun cycleSleepTimer() = dispatch(Action.CycleSleepTimer)
+
+    private fun extractColor(url: String) {
+        viewModelScope.launch {
+            val podcast = _uiState.value.current
+            val palette = podcast?.palette ?: paletteExtractor.extract(url)
+            if (palette != null) {
+                updateState { it.copy(dominantColor = palette.dominant, vibrantColor = palette.vibrant, mutedColor = palette.muted) }
+                if (podcast != null && podcast.palette == null) repo.savePalette(podcast.id, palette)
             }
         }
     }
-    
-    fun markPlayed(p: PodcastEntity) {
-        viewModelScope.launch {
-            repo.markPlayed(p)
-            emitEvent(UserEvent.ShowMessage("Marked as played"))
-        }
-    }
 
-    fun markOlderPlayed(p: PodcastEntity) {
-        viewModelScope.launch {
-            repo.markOlderAsPlayed(p)
-            emitEvent(UserEvent.ShowMessage("Archived older episodes"))
-        }
-    }
-
-    fun deleteDownload(p: PodcastEntity) {
-        viewModelScope.launch {
-            repo.deleteDownload(p.id)
-            emitEvent(UserEvent.ShowMessage("Download deleted"))
-        }
-    }
-    
-    fun playNext(p: PodcastEntity) {
-        viewModelScope.launch {
-            repo.addToQueue(p.id) // Currently adds to end. 
-            // TODO: Implement "Add to Top" in Dao if strict "Play Next" needed.
-            // For now, "Add to Queue" is sufficient context.
-            emitEvent(UserEvent.ShowMessage("Added to queue"))
-        }
-    }
-    
-    // --- Navigation Logic (Pure Value) ---
-    fun navigate(screen: Screen) {
-        dispatch(Action.Navigate(screen))
-    }
-    
-    fun setPlayerOpen(isOpen: Boolean) {
-        dispatch(Action.SetPlayerOpen(isOpen))
-    }
-    
-    fun setCarMode(isCarMode: Boolean) {
-        dispatch(Action.SetCarMode(isCarMode))
-    }
-    
-    fun setFilter(filter: String) {
-        dispatch(Action.SetFilter(filter))
-    }
-    
-    fun refreshLogs() {
-        viewModelScope.launch {
-            _logs.value = repo.getRecentLogs()
-        }
-    }
-
-    fun playNextEpisode() {
-        dispatch(Action.PlayNextInQueue)
-    }
-
-    fun playPreviousEpisode() {
-        dispatch(Action.PlayPreviousInQueue)
-    }
-
-    fun cycleSleepTimer() {
-        dispatch(Action.CycleSleepTimer)
+    override fun onCleared() {
+        playbackClient.cleanup()
+        super.onCleared()
     }
 }

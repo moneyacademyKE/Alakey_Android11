@@ -37,7 +37,9 @@ class MainActivity : ComponentActivity() {
         )
 
         setContent {
-            MainContent()
+            com.example.alakey.ui.theme.AlakeyTheme(darkTheme = true, dynamicColor = false) {
+                MainContent()
+            }
         }
     }
 }

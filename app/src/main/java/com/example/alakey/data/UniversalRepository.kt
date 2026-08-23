@@ -38,6 +38,7 @@ class UniversalRepository @Inject constructor(
     suspend fun updateProgress(id: String, progress: Long) = playback.updateProgress(id, progress)
     suspend fun updateLastPlayed(id: String, timestamp: Long) = playback.updateLastPlayed(id, timestamp)
     suspend fun addToQueue(id: String) = playback.addToQueue(id)
+    suspend fun addToQueueNext(id: String) = playback.addToQueueNext(id)
     suspend fun removeFromQueue(id: String) = playback.removeFromQueue(id)
     suspend fun getLastPlayedPodcast() = playback.getLastPlayedPodcast()
     suspend fun getRadioCandidate() = playback.getRadioCandidate()

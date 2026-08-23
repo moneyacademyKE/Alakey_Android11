@@ -35,6 +35,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -53,7 +58,8 @@ fun GlassDock(
         modifier
             .padding(bottom = 24.dp)
             .height(72.dp)
-            .width(336.dp) // Four compact destinations
+            .fillMaxWidth(.94f)
+            .widthIn(max = 336.dp) // Four compact destinations
     ) {
         // Glass Capsule
         Box(
@@ -73,21 +79,25 @@ fun GlassDock(
         ) {
             DockItem(
                 icon = Icons.AutoMirrored.Rounded.LibraryBooks,
+                label = "Library",
                 isSelected = currentScreen == AppViewModel.Screen.Library,
                 onClick = { onNavigate(AppViewModel.Screen.Library) }
             )
             DockItem(
-                icon = Icons.Rounded.Inbox, 
+                icon = Icons.Rounded.Inbox,
+                label = "Inbox",
                 isSelected = currentScreen == AppViewModel.Screen.Inbox,
                 onClick = { onNavigate(AppViewModel.Screen.Inbox) }
             )
             DockItem(
-                icon = Icons.Rounded.Search, 
+                icon = Icons.Rounded.Search,
+                label = "Marketplace",
                 isSelected = currentScreen == AppViewModel.Screen.Marketplace,
                 onClick = { onNavigate(AppViewModel.Screen.Marketplace) }
             )
             DockItem(
                 icon = Icons.AutoMirrored.Rounded.QueueMusic,
+                label = "Queue",
                 isSelected = currentScreen == AppViewModel.Screen.Queue,
                 onClick = { onNavigate(AppViewModel.Screen.Queue) }
             )
@@ -96,19 +106,27 @@ fun GlassDock(
 }
 
 @Composable
-private fun DockItem(icon: androidx.compose.ui.graphics.vector.ImageVector, isSelected: Boolean, onClick: () -> Unit) {
+private fun DockItem(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, isSelected: Boolean, onClick: () -> Unit) {
     val haptics = LocalHapticFeedback.current
     val color by animateColorAsState(targetValue = if (isSelected) Color(0xFF00F0FF) else Color.White.copy(0.4f), label = "color")
     val scale by animateFloatAsState(targetValue = if (isSelected) 1.2f else 1f, label = "scale")
     
     Column(
-        modifier = Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-            onClick() 
-        },
-        horizontalAlignment = Alignment.CenterHorizontally
+        modifier = Modifier
+            .sizeIn(minWidth = 56.dp, minHeight = 48.dp)
+            .semantics {
+                contentDescription = label
+                role = Role.Tab
+                selected = isSelected
+            }
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onClick()
+            },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        Icon(icon, null, tint = color, modifier = Modifier.size(28.dp).scale(scale))
+        Icon(icon, label, tint = color, modifier = Modifier.size(28.dp).scale(scale))
         Spacer(Modifier.height(4.dp))
         if (isSelected) {
             Box(Modifier.size(4.dp).background(color, CircleShape))
@@ -136,6 +154,7 @@ fun SpotlightHero(
             .padding(16.dp)
             .clip(RoundedCornerShape(32.dp))
             .clickable { onClick() }
+            .semantics { contentDescription = "Open featured episode" }
     ) {
         // Background Image (Darkened)
         AsyncImage(
@@ -173,7 +192,7 @@ fun SpotlightHero(
             verticalArrangement = Arrangement.Bottom
         ) {
             Box(Modifier.clip(RoundedCornerShape(50)).background(Color(0xFF00F0FF).copy(0.9f)).padding(horizontal = 12.dp, vertical = 6.dp)) {
-                Text("NEBULA FEATURE", color = Color.Black, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
+                Text(if (podcast.lastPlayed > 0) "NOW PLAYING" else "FEATURED", color = Color.Black, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
             }
             Spacer(Modifier.height(16.dp))
             Text(podcast.episodeTitle, color = Color.White, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold, maxLines = 2)
@@ -197,10 +216,11 @@ fun SpotlightHero(
                             .clip(RoundedCornerShape(50))
                             .background(Color.White)
                             .clickable { onPlay() }
+                            .semantics { contentDescription = "Play featured episode" }
                             .padding(horizontal = 16.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(androidx.compose.material.icons.Icons.Rounded.PlayArrow, null, tint = Color.Black, modifier = Modifier.size(24.dp))
+                        Icon(androidx.compose.material.icons.Icons.Rounded.PlayArrow, "Play featured episode", tint = Color.Black, modifier = Modifier.size(24.dp))
                     }
 
                     // Next Button
@@ -234,9 +254,11 @@ private fun IconButton(
             .clip(CircleShape)
             .background(if (isSelected) Color(0xFF00F0FF).copy(0.2f) else Color.White.copy(0.1f))
             .border(1.dp, if (isSelected) Color(0xFF00F0FF).copy(0.4f) else Color.White.copy(0.1f), CircleShape)
+            .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
             .clickable { onClick() }
+            .semantics { contentDescription = icon.name; role = Role.Button }
             .padding(10.dp)
     ) {
-        Icon(icon, null, tint = if (isSelected) Color(0xFF00F0FF) else Color.White, modifier = Modifier.size(22.dp))
+        Icon(icon, contentDescription = icon.name, tint = if (isSelected) Color(0xFF00F0FF) else Color.White, modifier = Modifier.size(22.dp))
     }
 }
