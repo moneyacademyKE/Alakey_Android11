@@ -80,6 +80,8 @@ dependencies {
     implementation(libs.gson)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.guava)
+    implementation(project(":tile-contract"))
+    implementation(libs.play.services.wearable)
 
     // Testing
     testImplementation(libs.junit)

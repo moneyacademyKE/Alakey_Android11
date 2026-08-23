@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import com.example.alakey.wear.WearBridge
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
@@ -155,6 +156,7 @@ class AppViewModel @Inject constructor(
         viewModelScope.launch {
             playbackClient.sleepTimerSeconds.collect { seconds -> updateState { it.copy(sleepTimerSeconds = seconds) } }
         }
+        WearBridge.start(context, viewModelScope, uiState)
     }
 
     fun dispatch(action: Action) {
