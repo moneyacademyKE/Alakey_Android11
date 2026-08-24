@@ -67,6 +67,12 @@ class PlaybackClient @Inject constructor(
     private var controller: MediaController? = null
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var progressJob: Job? = null
+    // #61: a disconnected controller is dead forever — rebuild it, surface the
+    // gap as buffering (the UI already morphs on it), re-apply intent to the
+    // fresh controller so commands swallowed by the dead one still land.
+    private var reconnectJob: Job? = null
+    private var reconcileJob: Job? = null
+    @Volatile private var cleanedUp = false
 
     // Sleep Timer
     private val _sleepTimerSeconds = MutableStateFlow(0)
@@ -94,17 +100,58 @@ class PlaybackClient @Inject constructor(
 
     private fun connect() {
         val token = SessionToken(context, ComponentName(context, AudioService::class.java))
-        controllerFuture = MediaController.Builder(context, token).buildAsync()
-        controllerFuture?.addListener({
+        val future = MediaController.Builder(context, token)
+            .setListener(object : MediaController.Listener {
+                override fun onDisconnected(mediaController: MediaController) {
+                    if (cleanedUp) return
+                    Log.w("PlaybackClient", "Controller disconnected — scheduling rebuild")
+                    mediaController.release()
+                    if (controller === mediaController) controller = null
+                    scheduleReconnect()
+                }
+            })
+            .buildAsync()
+        controllerFuture = future
+        future.addListener({
             try {
-                controller = controllerFuture?.get()
+                controller = future.get()
                 setupListener()
                 syncInitialState()
                 startReconciliationLoop()
+                reconnectJob?.cancel()
+                reconnectJob = null
+                // Intent swallowed by a dead controller must reach the fresh one.
+                controller?.let { reconcile(_desiredState.value, it) }
             } catch (e: Exception) {
                 Log.e("PlaybackClient", "Failed to connect to MediaController", e)
+                scheduleReconnect()
             }
         }, MoreExecutors.directExecutor())
+    }
+
+    /**
+     * Bounded backoff rebuild (#61). The gap surfaces as buffering; the next
+     * successful connect re-syncs real player state, which clears it. If every
+     * attempt fails, stop lying: clear the flag and log — the next user action
+     * goes through a fresh connect path.
+     */
+    private fun scheduleReconnect() {
+        if (cleanedUp || reconnectJob?.isActive == true) return
+        _state.update { it.copy(isBuffering = true) }
+        reconnectJob = scope.launch {
+            var backoff = 250L
+            repeat(RECONNECT_MAX_ATTEMPTS) { attempt ->
+                delay(backoff)
+                backoff = (backoff * 2).coerceAtMost(RECONNECT_MAX_BACKOFF_MS)
+                if (controller?.isConnected == true) return@launch
+                Log.d("PlaybackClient", "Reconnect attempt ${attempt + 1}/$RECONNECT_MAX_ATTEMPTS")
+                connect()
+            }
+            if (controller?.isConnected != true) {
+                _state.update { it.copy(isBuffering = false) }
+                Log.e("PlaybackClient", "Reconnect exhausted after $RECONNECT_MAX_ATTEMPTS attempts")
+            }
+        }
     }
 
     private val _playbackEnded = MutableSharedFlow<Unit>()
@@ -190,7 +237,8 @@ class PlaybackClient @Inject constructor(
 
     // --- Declarative Driver (Reconciler) ---
     private fun startReconciliationLoop() {
-        scope.launch {
+        if (reconcileJob?.isActive == true) return // reconnects re-enter; one collector, ever
+        reconcileJob = scope.launch {
             _desiredState.collect { desired ->
                 controller?.let { c -> reconcile(desired, c) }
             }
@@ -362,8 +410,10 @@ class PlaybackClient @Inject constructor(
         prefs.getFloat(KEY_SPEED, 1.0f).takeIf { it > 0f } ?: 1f
 
     fun cleanup() {
+        cleanedUp = true
         stopProgressPolling()
         sleepTimerJob?.cancel()
+        reconnectJob?.cancel()
         controllerFuture?.let { MediaController.releaseFuture(it) }
     }
 
@@ -376,5 +426,7 @@ class PlaybackClient @Inject constructor(
         const val RESTORE_THRESHOLD_MS = 10_000L
         const val RESUME_REWIND_AFTER_MS = 5 * 60 * 1000L
         const val RESUME_REWIND_MS = 3_000L
+        const val RECONNECT_MAX_ATTEMPTS = 5
+        const val RECONNECT_MAX_BACKOFF_MS = 4_000L
     }
 }
