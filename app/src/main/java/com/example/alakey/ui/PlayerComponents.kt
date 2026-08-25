@@ -1,6 +1,6 @@
 package com.example.alakey.ui
 
-import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -14,10 +14,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.updateTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -67,11 +65,8 @@ val SPEED_STEPS = listOf(.5f, .8f, 1f, 1.1f, 1.2f, 1.5f, 1.6f, 2f, 2.5f, 3f)
 fun PlayerHost(
     spec: PlayerSpec,
     expanded: Boolean,
-    queueCount: Int,
-    onOpen: () -> Unit,
     onClose: () -> Unit,
     onTogglePlay: () -> Unit,
-    onQueue: () -> Unit,
     onSeek: (Long) -> Unit,
     onSkip: (Int) -> Unit,
     onSetSpeed: (Float) -> Unit,
@@ -80,32 +75,21 @@ fun PlayerHost(
     onSleepTimer: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // D2: spring slide/scale between mini and full player; interruptible by nature.
-    AnimatedContent(
-        targetState = expanded,
-        transitionSpec = {
-            if (targetState) {
-                (slideInVertically(spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow)) { it } +
-                    fadeIn(tween(220))).togetherWith(
-                    slideOutVertically(tween(200)) { it / 3 } + fadeOut(tween(160)))
-            } else {
-                (fadeIn(tween(220)) + scaleIn(initialScale = .94f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow))).togetherWith(
-                    fadeOut(tween(160)))
-            }
-        },
-        label = "player_transition",
+    // Fullscreen player sheet only. The collapsed MiniPlayer is pinned in the main layout
+    // flow (top, below the Header) so list content sizes around it instead of sliding
+    // underneath a floating bottom overlay. D2: spring slide-up; interruptible by nature.
+    AnimatedVisibility(
+        visible = expanded,
+        enter = slideInVertically(spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow)) { it } + fadeIn(tween(220)),
+        exit = slideOutVertically(tween(200)) { it / 3 } + fadeOut(tween(160)),
         modifier = modifier
-    ) { isExpanded ->
-        if (isExpanded) {
-            PlayerScreen(spec, onClose, onTogglePlay, onSeek, onSkip, onSetSpeed, onNext, onPrevious, onSleepTimer, Modifier.fillMaxSize())
-        } else {
-            MiniPlayer(spec, queueCount, onOpen, onTogglePlay, onQueue, onSkip, Modifier.padding(bottom = 92.dp, start = 16.dp, end = 16.dp))
-        }
+    ) {
+        PlayerScreen(spec, onClose, onTogglePlay, onSeek, onSkip, onSetSpeed, onNext, onPrevious, onSleepTimer, Modifier.fillMaxSize())
     }
 }
 
 @Composable
-private fun MiniPlayer(spec: PlayerSpec, queueCount: Int, onOpen: () -> Unit, onToggle: () -> Unit, onQueue: () -> Unit, onSkip: (Int) -> Unit, modifier: Modifier) {
+fun MiniPlayer(spec: PlayerSpec, queueCount: Int, onOpen: () -> Unit, onToggle: () -> Unit, onQueue: () -> Unit, onSkip: (Int) -> Unit, modifier: Modifier) {
     PrismaticGlass(modifier.fillMaxWidth().heightIn(min = 76.dp), RoundedCornerShape(24.dp)) {
         Row(Modifier.fillMaxSize().clickable(onClick = onOpen).semantics { contentDescription = "Open player for ${spec.title}" }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
             AsyncImage(spec.imageUrl, null, Modifier.size(56.dp).clip(RoundedCornerShape(16.dp)), contentScale = ContentScale.Crop)

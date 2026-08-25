@@ -15,9 +15,12 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -119,6 +122,20 @@ fun MainContent() {
         FluxBackground(color = Color(state.dominantColor))
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
             Header(activeScreen.name, vm::playRadio, { vm.setCarMode(true) }, { showAddDialog = true })
+            // Mini-player pinned in the layout flow below the header: content sizes around
+            // it instead of sliding underneath a floating bottom overlay (owner UX fix).
+            AnimatedVisibility(
+                visible = state.current != null && !state.isCarMode,
+                enter = expandVertically() + fadeIn(tween(220)),
+                exit = shrinkVertically(tween(200)) + fadeOut(tween(160))
+            ) {
+                MiniPlayer(
+                    spec = state.toPlayerSpec(sleepTimerSeconds, sleepTimerTotalSeconds), queueCount = state.queue.size,
+                    onOpen = { vm.setPlayerOpen(true) }, onToggle = vm::togglePlay,
+                    onQueue = { vm.navigate(AppViewModel.Screen.Queue) }, onSkip = vm::skip,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp)
+                )
+            }
             AnimatedContent(
                 targetState = activeScreen,
                 transitionSpec = { (fadeIn(tween(300)) + scaleIn(initialScale = .95f)).togetherWith(fadeOut(tween(200))) },
@@ -135,9 +152,9 @@ fun MainContent() {
         }
         if (state.current != null && !state.isCarMode) {
             PlayerHost(
-                spec = state.toPlayerSpec(sleepTimerSeconds, sleepTimerTotalSeconds), expanded = state.isPlayerOpen, queueCount = state.queue.size,
-                onOpen = { vm.setPlayerOpen(true) }, onClose = { vm.setPlayerOpen(false) }, onTogglePlay = vm::togglePlay,
-                onQueue = { vm.navigate(AppViewModel.Screen.Queue) }, onSeek = vm::seek, onSkip = vm::skip,
+                spec = state.toPlayerSpec(sleepTimerSeconds, sleepTimerTotalSeconds), expanded = state.isPlayerOpen,
+                onClose = { vm.setPlayerOpen(false) }, onTogglePlay = vm::togglePlay,
+                onSeek = vm::seek, onSkip = vm::skip,
                 onSetSpeed = vm::setPlaybackSpeed, onNext = vm::playNextEpisode, onPrevious = vm::playPreviousEpisode,
                 onSleepTimer = { showSleepSheet = true }, modifier = Modifier.align(Alignment.BottomCenter)
             )
