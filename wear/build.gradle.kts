@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.alakey.wear"
         minSdk = 30
         targetSdk = 36
-        versionCode = 3
-        versionName = "2.6.0"
+        versionCode = 4
+        versionName = "2.6.1"
     }
 
     buildTypes {
