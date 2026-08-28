@@ -161,6 +161,10 @@ class AppViewModel @Inject constructor(
             playbackClient.sleepTimerSeconds.collect { seconds -> updateState { it.copy(sleepTimerSeconds = seconds) } }
         }
         WearBridge.start(context, viewModelScope, uiState)
+        // Cold-start restore: surface the last episode paused at its saved position
+        // (mini-player strip, sheet stays closed). Orphaned since the MainActivity
+        // refactor — #49 added Action.Restore but nothing ever dispatched it.
+        resumeLastPlayed()
     }
 
     fun dispatch(action: Action) {
