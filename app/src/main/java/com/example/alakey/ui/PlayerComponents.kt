@@ -90,7 +90,9 @@ fun PlayerHost(
 
 @Composable
 fun MiniPlayer(spec: PlayerSpec, queueCount: Int, onOpen: () -> Unit, onToggle: () -> Unit, onQueue: () -> Unit, onSkip: (Int) -> Unit, modifier: Modifier) {
-    PrismaticGlass(modifier.fillMaxWidth().heightIn(min = 76.dp), RoundedCornerShape(24.dp)) {
+    // Compact strip: FIXED height, not a floor. AnimatedVisibility offers the full viewport
+    // as max height; heightIn(min=...) alone let Row(fillMaxSize) stretch to the whole screen.
+    PrismaticGlass(modifier.fillMaxWidth().height(76.dp), RoundedCornerShape(24.dp)) {
         Row(Modifier.fillMaxSize().clickable(onClick = onOpen).semantics { contentDescription = "Open player for ${spec.title}" }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
             AsyncImage(spec.imageUrl, null, Modifier.size(56.dp).clip(RoundedCornerShape(16.dp)), contentScale = ContentScale.Crop)
             Spacer(Modifier.width(12.dp))
