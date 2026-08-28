@@ -40,10 +40,10 @@ class AppReducerTest {
         assertEquals(AsyncOp.Failed("offline"), download.downloadOps["episode"])
     }
 
-    @Test fun `restore opens player at episode but never marks playing`() {
+    @Test fun `restore surfaces mini-player paused, sheet stays closed`() {
         val state = AppReducer.reduce(AppViewModel.UiState(), AppViewModel.Action.Restore(episode("resume-me").apply { progress = 42_000 }))
         assertEquals("resume-me", state.current?.id)
-        assertTrue(state.isPlayerOpen)
+        assertFalse(state.isPlayerOpen) // strip, not sheet: restore is data, not engagement
         assertFalse(state.isPlaying) // #49: restore is data; playing is intent
     }
 
