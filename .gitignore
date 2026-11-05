@@ -1,6 +1,6 @@
 local.properties
 .gradle
-/build
+build/
 /.idea
 *.iml
 *.jks
