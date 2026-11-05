@@ -40,8 +40,8 @@ graph TD
 
 ### 4. Services & Workers
 - **AudioService**: An `androidx.media3.session.MediaLibraryService` for background media playback.
-- **FeedSyncWorker**: Periodically checks for new episodes in subscribed feeds.
-- **AudioDownloadWorker**: Handles background downloading of MP3 files to local storage.
+- **FeedSyncWorker**: Periodically checks for new episodes in subscribed feeds (network-constrained).
+- **DownloadRepository**: Downloads run inline with HTTP Range resume and SHA-256-named local files — the old `AudioDownloadWorker` was removed.
 
 ## Key Design Patterns
 - **De-complected Architecture**: Heavy emphasis on separating "Intent" from "Mechanism". Components like `PlaybackClient` and `RssParser` are decoupled from Android lifecycle and IO where possible.
