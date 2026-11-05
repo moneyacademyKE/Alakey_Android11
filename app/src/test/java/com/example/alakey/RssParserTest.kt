@@ -84,6 +84,31 @@ class RssParserTest {
         assertTrue(RssParser.parse("<rss><channel>", FEED_URL).isEmpty())
     }
 
+    // M14 pin: documents the current guid-less identity derivation so the
+    // future migration off 32-bit hashCode (round 2) is a deliberate change.
+    @Test
+    fun `parse derives fallback id from feed and audio url hash when guid missing`() {
+        val audioUrl = "https://example.com/audio/episode-2.mp3"
+        val episodes = RssParser.parse(
+            """
+            <rss>
+                <channel>
+                    <title>Example Show</title>
+                    <item>
+                        <title>Episode Two</title>
+                        <enclosure url="$audioUrl" type="audio/mpeg" />
+                    </item>
+                </channel>
+            </rss>
+            """.trimIndent(),
+            FEED_URL
+        )
+
+        assertEquals(1, episodes.size)
+        assertEquals((FEED_URL + audioUrl).hashCode().toString(), episodes[0].id)
+        assertEquals("Episode Two", episodes[0].episodeTitle)
+    }
+
     private companion object {
         const val FEED_URL = "https://example.com/feed.xml"
     }
