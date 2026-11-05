@@ -11,7 +11,8 @@ android {
         applicationId = "com.example.alakey.wear"
         minSdk = 30
         targetSdk = 36
-        versionCode = 6
+        // L10: versionCode 6 diverged from app's 8 at the same versionName.
+        versionCode = 8
         versionName = "2.6.3"
     }
 
@@ -35,6 +36,6 @@ dependencies {
     implementation(libs.androidx.wear.tiles)
     implementation(libs.play.services.wearable)
     implementation(libs.guava)
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    implementation(libs.kotlinx.coroutines.android) // L10: was hardcoded outside the catalog
     testImplementation(libs.junit)
 }
