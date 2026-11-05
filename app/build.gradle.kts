@@ -1,9 +1,19 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("com.google.dagger.hilt.android")
     id("com.google.devtools.ksp")
     id("jacoco") // Enable JaCoCo plugin
+}
+
+// H1: release signing. CI provides env vars (KEYSTORE_FILE/PASSWORD, KEY_ALIAS
+// /PASSWORD — see android.yml); local builds read the gitignored
+// keystore.properties at the repo root. With neither present, assembleRelease
+// fails loudly instead of silently shipping a debug-signed APK.
+val releaseKeystore = Properties().apply {
+    rootProject.file("keystore.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
 }
 
 android {
@@ -19,6 +29,19 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     
+    signingConfigs {
+        create("release") {
+            storeFile = file(
+                System.getenv("KEYSTORE_FILE")
+                    ?: releaseKeystore.getProperty("storeFile")
+                    ?: "release-signing-not-configured.jks"
+            )
+            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: releaseKeystore.getProperty("storePassword")
+            keyAlias = System.getenv("KEY_ALIAS") ?: releaseKeystore.getProperty("keyAlias")
+            keyPassword = System.getenv("KEY_PASSWORD") ?: releaseKeystore.getProperty("keyPassword")
+        }
+    }
+
     buildTypes {
         debug {
             enableUnitTestCoverage = true
@@ -26,6 +49,7 @@ android {
         }
         release {
             isMinifyEnabled = true
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
