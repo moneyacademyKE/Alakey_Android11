@@ -23,10 +23,17 @@ class FeedSyncWorker @AssistedInject constructor(
 
     companion object {
         fun schedule(c: Context) {
+            // M6: offline windows previously burned retries on guaranteed
+            // failure — periodic sync now requires a connection.
+            val constraints = androidx.work.Constraints.Builder()
+                .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED)
+                .build()
             WorkManager.getInstance(c).enqueueUniquePeriodicWork(
                 "sync",
                 ExistingPeriodicWorkPolicy.KEEP,
-                PeriodicWorkRequestBuilder<FeedSyncWorker>(3, TimeUnit.HOURS).build()
+                PeriodicWorkRequestBuilder<FeedSyncWorker>(3, TimeUnit.HOURS)
+                    .setConstraints(constraints)
+                    .build()
             )
         }
     }
