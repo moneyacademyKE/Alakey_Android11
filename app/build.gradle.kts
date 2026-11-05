@@ -81,8 +81,6 @@ dependencies {
     ksp(libs.androidx.room.compiler)
     
     // Net
-    implementation(libs.retrofit)
-    implementation(libs.okhttp.logging.interceptor)
     implementation(libs.gson)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.guava)
