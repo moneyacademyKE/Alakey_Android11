@@ -7,7 +7,10 @@ import androidx.room.Query
 
 @Dao
 interface FactDao {
-    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    // L11: same-ms re-assert of the same (entityId, attribute, tx) previously
+    // hit INSERT IGNORE and was silently dropped; REPLACE makes it
+    // last-write-wins, which is what an assert means.
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(fact: FactEntity)
 
     @Query("SELECT * FROM facts ORDER BY tx DESC")
@@ -25,7 +28,9 @@ interface FactDao {
     /**
      * Retention sweep: drop every superseded fact, keeping the latest tx per
      * (entityId, attribute) — exactly the rows getLatestFacts/hydrate consume.
-     * Same-ms siblings are impossible (composite PK), so this is lossless.
+     * Lossless for values: same-ms re-asserts collide on the composite PK and
+     * are resolved by REPLACE (last-write-wins, see insert); differing tx
+     * values are distinct rows resolved here by max(tx).
      */
     @Query("""
         DELETE FROM facts WHERE tx < (
