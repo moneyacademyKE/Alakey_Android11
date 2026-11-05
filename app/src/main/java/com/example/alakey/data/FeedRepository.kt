@@ -25,7 +25,17 @@ class FeedRepository @Inject constructor(
     private val client get() = networkSystem.client
 
     suspend fun searchPodcasts(query: String): Result<List<ItunesSearchResult>> = networkCall.run {
-        val request = Request.Builder().url("https://itunes.apple.com/search?term=$query&entity=podcast&media=podcast").build()
+        // M7: built via HttpUrl.Builder — a term containing '&'/'#'/UTF-8
+        // previously truncated or broke the whole request.
+        val url = okhttp3.HttpUrl.Builder()
+            .scheme("https")
+            .host("itunes.apple.com")
+            .addPathSegment("search")
+            .addQueryParameter("term", query)
+            .addQueryParameter("entity", "podcast")
+            .addQueryParameter("media", "podcast")
+            .build()
+        val request = Request.Builder().url(url).build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw Exception("iTunes search failed: ${response.code}")
             NetworkLogic.parseItunesResults(response.body?.string() ?: throw Exception("Empty response body"))
