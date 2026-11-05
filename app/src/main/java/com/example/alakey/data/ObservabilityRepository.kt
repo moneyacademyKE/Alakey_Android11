@@ -13,7 +13,7 @@ class ObservabilityRepository @Inject constructor(private val dbSystem: Database
     suspend fun getRecentLogs() = eventLogDao.getRecentEvents()
     suspend fun getLogsByType(type: String) = eventLogDao.getEventsByType(type)
     suspend fun getFailedLogs() = eventLogDao.getFailedEvents()
-    suspend fun grepLogs(q: String) = eventLogDao.grepLogs(q)
+    suspend fun grepLogs(q: String) = eventLogDao.grepLogs(EventLog.escapeLike(q))
 
     suspend fun rawQuery(sql: String): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
         val cursor = dbSystem.db.query(sql, null)

@@ -50,6 +50,8 @@ class FeedRepository @Inject constructor(
     suspend fun syncAll() = syncMutex.withLock {
         withContext(Dispatchers.IO) {
             dao.getSubscribedFeeds().forEach { url -> subscribe(url).exceptionOrNull()?.printStackTrace() }
+            // M12: keep the event log bounded — one purge per sync, after writes.
+            eventLogDao.purgeOlderThan(System.currentTimeMillis() - EventLog.RETENTION_MS)
         }
     }
 
