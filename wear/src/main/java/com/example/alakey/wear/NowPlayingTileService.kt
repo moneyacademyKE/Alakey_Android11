@@ -69,7 +69,7 @@ class NowPlayingTileService : TileService() {
         val column = LayoutElementBuilders.Column.Builder()
             .setHorizontalAlignment(LayoutElementBuilders.HORIZONTAL_ALIGN_CENTER)
 
-        if (isStale(np)) {
+        if (TileFormat.isStale(np)) {
             // M9: a frame older than STALE_MS renders as the placeholder, not
             // as live playback — a dead phone used to freeze a "playing" tile
             // forever.
@@ -81,9 +81,9 @@ class NowPlayingTileService : TileService() {
             column.addContent(spacer(4f))
             column.addContent(text(np.title, 15f, COL_BRIGHT, 5))
             column.addContent(spacer(8f))
-            column.addContent(text(glyph(np), 20f, COL_ACCENT, 1))
+            column.addContent(text(TileFormat.glyph(np), 20f, COL_ACCENT, 1))
             column.addContent(spacer(4f))
-            column.addContent(text("${mmss(np.positionMs)} / ${mmss(np.durationMs)}", 10f, COL_DIM, 1))
+            column.addContent(text("${TileFormat.mmss(np.positionMs)} / ${TileFormat.mmss(np.durationMs)}", 10f, COL_DIM, 1))
         }
 
         return LayoutElementBuilders.Box.Builder()
@@ -105,18 +105,6 @@ class NowPlayingTileService : TileService() {
             .build()
     }
 
-    private fun glyph(np: TileContract.NowPlaying): String = when {
-        np.isBuffering -> "◌"
-        np.isPlaying -> "❚❚"
-        else -> "▶"
-    }
-
-    /** M9: no frame yet, or the last frame is too old to present as live. */
-    private fun isStale(np: TileContract.NowPlaying): Boolean {
-        if (np.timestampMs == 0L) return true
-        return System.currentTimeMillis() - np.timestampMs > STALE_MS
-    }
-
     private fun text(value: String, sizeSp: Float, color: Int, maxLines: Int) =
         LayoutElementBuilders.Text.Builder()
             .setText(value)
@@ -132,20 +120,11 @@ class NowPlayingTileService : TileService() {
     private fun spacer(heightDp: Float) =
         LayoutElementBuilders.Spacer.Builder().setHeight(DimensionBuilders.dp(heightDp)).build()
 
-    private fun mmss(ms: Long): String {
-        // L7: default locale formatted Eastern Arabic-Indic digits under
-        // ar/fa/ur — pin Locale.US to match the phone-side formatter.
-        val totalSec = (ms / 1000).coerceAtLeast(0)
-        return "%d:%02d".format(java.util.Locale.US, totalSec / 60, totalSec % 60)
-    }
-
     private companion object {
         const val RES_VERSION = "v1"
         const val COL_BRIGHT = 0xFFEDEDED.toInt()
         const val COL_DIM = 0xFF9E9E9E.toInt()
         const val COL_ACCENT = 0xFFFFB74D.toInt()
 
-        /** A frame with no refresh for this long stops presenting as live. */
-        const val STALE_MS = 10L * 60 * 1000
     }
 }
