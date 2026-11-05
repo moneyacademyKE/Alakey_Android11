@@ -31,6 +31,14 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
+ * M4 policy, pure and pinned: the smart-resume rewind is computed ONLY from
+ * a known position. A null (mid-rebuild controller) yields no intent — the
+ * old code coalesced it to 0 and restarted episodes on the fresh controller.
+ */
+internal fun rewindSeekTarget(knownPosition: Long?, rewindMs: Long): Long? =
+    knownPosition?.let { (it - rewindMs).coerceAtLeast(0) }
+
+/**
  * Single projection surface over the MediaSession player.
  * The session IS the player: queue, position, and speed live in the controller;
  * the UI only reduces events into state.
@@ -322,11 +330,23 @@ class PlaybackClient @Inject constructor(
     fun next() { controller?.seekToNextMediaItem() }
     fun previous() { controller?.seekToPreviousMediaItem() }
 
+    /**
+     * M4: the position we actually know — the live controller if connected,
+     * else the projection's last-known value when it provably belongs to the
+     * episode we intend to command. Null = mid-rebuild blind spot; callers
+     * must not coalesce it to zero (that restarted episodes).
+     */
+    private fun knownPosition(): Long? =
+        controller?.takeIf { it.isConnected }?.currentPosition
+            ?: _state.value.currentPosition
+                .takeIf { _state.value.currentMediaId == _desiredState.value.mediaItem?.mediaId }
+
     fun resume() {
         if (lastPauseTime > 0 && (System.currentTimeMillis() - lastPauseTime) > RESUME_REWIND_AFTER_MS) {
-            val currentPos = controller?.currentPosition ?: 0L
-            _desiredState.update { it.copy(seekPosition = (currentPos - RESUME_REWIND_MS).coerceAtLeast(0)) }
-            Log.d("PlaybackClient", "Smart Resume: Rewind Intent Set")
+            rewindSeekTarget(knownPosition(), RESUME_REWIND_MS)?.let { target ->
+                _desiredState.update { it.copy(seekPosition = target) }
+                Log.d("PlaybackClient", "Smart Resume: Rewind Intent Set")
+            }
         }
         lastPauseTime = 0
         _desiredState.update { it.copy(isPlaying = true) }
@@ -345,8 +365,15 @@ class PlaybackClient @Inject constructor(
     }
 
     fun skip(seconds: Int) {
-        val current = controller?.currentPosition ?: 0L
-        _desiredState.update { it.copy(seekPosition = current + (seconds * 1000)) }
+        // M4: mid-rebuild (null), a negative skip coalesced to a seek at 0 —
+        // episode restart on a back-skip. The fresh controller re-syncs real
+        // state; the skip is dropped and logged instead of lying.
+        val known = knownPosition()
+        if (known == null) {
+            Log.d("PlaybackClient", "Skip dropped: controller mid-rebuild")
+            return
+        }
+        _desiredState.update { it.copy(seekPosition = (known + seconds * 1000L).coerceAtLeast(0)) }
     }
 
     fun setSpeed(speed: Float) {
