@@ -3,9 +3,13 @@ package com.example.alakey.data
 import androidx.room.Database
 import androidx.room.RoomDatabase
 
+object RoomSchema {
+    const val VERSION = 13
+}
+
 @Database(
     entities = [PodcastEntity::class, EventLogEntity::class, FactEntity::class],
-    version = SCHEMA_VERSION,
+    version = RoomSchema.VERSION,
     // C1: schemas are the migration source of truth — export them from v13 on.
     exportSchema = true
 )
@@ -16,7 +20,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun factDao(): FactDao
 
     companion object {
-        const val SCHEMA_VERSION = 13
+        const val SCHEMA_VERSION = RoomSchema.VERSION
     }
 }
 
