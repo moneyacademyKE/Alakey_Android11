@@ -30,7 +30,16 @@ class AudioService : MediaLibraryService() {
             .build()
     }
 
-    override fun onGetSession(info: MediaSession.ControllerInfo) = session
+    override fun onGetSession(info: MediaSession.ControllerInfo): MediaLibrarySession? = when {
+        // M3: the session previously accepted every controller — any app could
+        // connect, control playback and browse the library tree. Own package
+        // and trusted system controllers (BT, Assistant, Auto) only.
+        info.isTrusted || info.packageName == packageName -> session
+        else -> {
+            android.util.Log.w(TAG, "Rejecting media controller: ${info.packageName}")
+            null
+        }
+    }
 
     // FGS contract (#62): whatever arms the start window — media button, the
     // controller's play path, adb — must find startForeground() already called
@@ -63,5 +72,6 @@ class AudioService : MediaLibraryService() {
     private companion object {
         const val NOTIFICATION_ID = 1
         const val CHANNEL_ID = "playback_placeholder"
+        const val TAG = "AudioService"
     }
 }
