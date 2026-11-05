@@ -47,6 +47,12 @@ android {
     }
 }
 
+// C1: Room schema export location — committed schemas are the migration
+// source of truth; every future version bump requires a Migration object.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
