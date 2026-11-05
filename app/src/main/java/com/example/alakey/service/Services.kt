@@ -33,8 +33,11 @@ class AudioService : MediaLibraryService() {
     override fun onGetSession(info: MediaSession.ControllerInfo): MediaLibrarySession? = when {
         // M3: the session previously accepted every controller — any app could
         // connect, control playback and browse the library tree. Own package
-        // and trusted system controllers (BT, Assistant, Auto) only.
-        info.isTrusted || info.packageName == packageName -> session
+        // and platform media bridges (BT/Auto use the compat api package)
+        // pass; everything else is refused. (isTrusted is not public in
+        // media3 1.2.0 — revisit when the dep is bumped.)
+        info.packageName == packageName -> session
+        info.packageName == COMPAT_MEDIA_PACKAGE -> session
         else -> {
             android.util.Log.w(TAG, "Rejecting media controller: ${info.packageName}")
             null
@@ -73,5 +76,8 @@ class AudioService : MediaLibraryService() {
         const val NOTIFICATION_ID = 1
         const val CHANNEL_ID = "playback_placeholder"
         const val TAG = "AudioService"
+
+        /** Package used by platform media bridges (Bluetooth, Auto) on connect. */
+        const val COMPAT_MEDIA_PACKAGE = "android.support.v4.media.session.api"
     }
 }
