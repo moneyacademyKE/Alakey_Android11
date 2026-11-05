@@ -11,6 +11,29 @@ import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * C1 decision: which pre-open path an existing database file takes. Pure so
+ * the floor semantics are unit-testable — the v14 bump once made a v13
+ * install wipe-worthy by accident (floor was "current version" instead of
+ * "lowest migratable version").
+ */
+internal sealed interface LegacyDecision {
+    /** No database file — nothing to do. */
+    data object Absent : LegacyDecision
+    /** Room handles it: real migration path exists, or version unreadable
+     *  (never wipe on a read failure). */
+    data object PassThrough : LegacyDecision
+    /** Below the migration floor: no path — back up, then rebuild. */
+    data class BackupAndRebuild(val fromVersion: Int) : LegacyDecision
+}
+
+internal fun legacyDecision(dbExists: Boolean, version: Int?, migrationFloor: Int): LegacyDecision = when {
+    !dbExists -> LegacyDecision.Absent
+    version == null -> LegacyDecision.PassThrough
+    version < migrationFloor -> LegacyDecision.BackupAndRebuild(version)
+    else -> LegacyDecision.PassThrough
+}
+
 @Singleton
 class DatabaseSystem @Inject constructor(
     @ApplicationContext private val context: Context
@@ -48,25 +71,23 @@ class DatabaseSystem @Inject constructor(
      */
     private fun preserveLegacyDatabase() {
         val dbFile = context.getDatabasePath(DB_NAME)
-        if (!dbFile.exists()) return
-
         val legacyVersion = runCatching {
             SQLiteDatabase.openDatabase(dbFile.path, null, SQLiteDatabase.OPEN_READONLY).use { it.version }
-        }.getOrDefault(AppDatabase.SCHEMA_VERSION)
+        }.getOrNull()
 
-        // Wipe floor: v13 and up have real migrations (Migrations.kt) —
-        // Room upgrades them in place. Only below the floor is there no
-        // path, and that is what the backup-and-rebuild is for.
-        if (legacyVersion >= MIGRATION_FLOOR) return
+        when (val decision = legacyDecision(dbFile.exists(), legacyVersion, MIGRATION_FLOOR)) {
+            LegacyDecision.Absent, LegacyDecision.PassThrough -> return
+            is LegacyDecision.BackupAndRebuild -> {
+                val backup = File(dbFile.parentFile, "${DB_NAME}.pre-v${AppDatabase.SCHEMA_VERSION}.bak")
+                runCatching { dbFile.copyTo(backup, overwrite = true) }
+                    .onSuccess { Log.w(TAG, "Legacy DB v${decision.fromVersion} backed up to ${backup.name}; building fresh v${AppDatabase.SCHEMA_VERSION} database") }
+                    .onFailure { Log.w(TAG, "Legacy DB backup failed; rebuilding without backup", it) }
 
-        val backup = File(dbFile.parentFile, "${DB_NAME}.pre-v${AppDatabase.SCHEMA_VERSION}.bak")
-        runCatching { dbFile.copyTo(backup, overwrite = true) }
-            .onSuccess { Log.w(TAG, "Legacy DB v$legacyVersion backed up to ${backup.name}; building fresh v${AppDatabase.SCHEMA_VERSION} database") }
-            .onFailure { Log.w(TAG, "Legacy DB backup failed; rebuilding without backup", it) }
-
-        dbFile.delete()
-        listOf("-wal", "-shm", "-journal").forEach { suffix ->
-            File(dbFile.parentFile, "$DB_NAME$suffix").delete()
+                dbFile.delete()
+                listOf("-wal", "-shm", "-journal").forEach { suffix ->
+                    File(dbFile.parentFile, "$DB_NAME$suffix").delete()
+                }
+            }
         }
     }
 
