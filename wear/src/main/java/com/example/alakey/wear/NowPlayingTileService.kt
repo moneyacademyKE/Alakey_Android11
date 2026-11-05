@@ -69,7 +69,10 @@ class NowPlayingTileService : TileService() {
         val column = LayoutElementBuilders.Column.Builder()
             .setHorizontalAlignment(LayoutElementBuilders.HORIZONTAL_ALIGN_CENTER)
 
-        if (np.timestampMs == 0L) {
+        if (isStale(np)) {
+            // M9: a frame older than STALE_MS renders as the placeholder, not
+            // as live playback — a dead phone used to freeze a "playing" tile
+            // forever.
             column.addContent(text("Alakey", 16f, COL_BRIGHT, 1))
             column.addContent(spacer(6f))
             column.addContent(text("Play something on your phone", 12f, COL_DIM, 3))
@@ -108,6 +111,12 @@ class NowPlayingTileService : TileService() {
         else -> "▶"
     }
 
+    /** M9: no frame yet, or the last frame is too old to present as live. */
+    private fun isStale(np: TileContract.NowPlaying): Boolean {
+        if (np.timestampMs == 0L) return true
+        return System.currentTimeMillis() - np.timestampMs > STALE_MS
+    }
+
     private fun text(value: String, sizeSp: Float, color: Int, maxLines: Int) =
         LayoutElementBuilders.Text.Builder()
             .setText(value)
@@ -124,8 +133,10 @@ class NowPlayingTileService : TileService() {
         LayoutElementBuilders.Spacer.Builder().setHeight(DimensionBuilders.dp(heightDp)).build()
 
     private fun mmss(ms: Long): String {
+        // L7: default locale formatted Eastern Arabic-Indic digits under
+        // ar/fa/ur — pin Locale.US to match the phone-side formatter.
         val totalSec = (ms / 1000).coerceAtLeast(0)
-        return "%d:%02d".format(totalSec / 60, totalSec % 60)
+        return "%d:%02d".format(java.util.Locale.US, totalSec / 60, totalSec % 60)
     }
 
     private companion object {
@@ -133,5 +144,8 @@ class NowPlayingTileService : TileService() {
         const val COL_BRIGHT = 0xFFEDEDED.toInt()
         const val COL_DIM = 0xFF9E9E9E.toInt()
         const val COL_ACCENT = 0xFFFFB74D.toInt()
+
+        /** A frame with no refresh for this long stops presenting as live. */
+        const val STALE_MS = 10L * 60 * 1000
     }
 }
