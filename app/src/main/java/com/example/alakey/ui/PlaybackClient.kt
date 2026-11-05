@@ -356,8 +356,14 @@ class PlaybackClient @Inject constructor(
         _desiredState.update { it.copy(isPlaying = false) }
     }
 
+    /**
+     * M8: the toggle reads the projection, not the desired state. Every pause
+     * source (notification, headset, watch) updates the projection; only
+     * in-app commands update desired. Branching on desired desynced after a
+     * notification pause — the next toggle went the wrong way.
+     */
     fun togglePlay() {
-        if (_desiredState.value.isPlaying) pause() else resume()
+        if (_state.value.isPlaying) pause() else resume()
     }
 
     fun seek(ms: Long) {
