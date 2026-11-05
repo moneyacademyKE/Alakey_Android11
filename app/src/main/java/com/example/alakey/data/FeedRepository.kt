@@ -75,11 +75,11 @@ class FeedRepository @Inject constructor(
     }
 
     private suspend fun fetchValidFeed(url: String): String {
+        // M2: the third-party CORS-proxy fallback is gone — it leaked every
+        // feed URL to api.allorigins.win on direct-fetch failure. A failed
+        // direct fetch now surfaces as a logged sync failure instead.
         val direct = runCatching { fetchDirect(url) }.getOrNull()
         if (direct.isValidXmlFeed()) return direct.orEmpty()
-
-        val proxied = runCatching { fetchWithProxy(url) }.getOrNull()
-        if (proxied.isValidXmlFeed()) return proxied.orEmpty()
 
         throw Exception("Failed to fetch valid feed content")
     }
@@ -88,13 +88,6 @@ class FeedRepository @Inject constructor(
         client.newCall(Request.Builder().url(url).build()).execute().use { response ->
             if (!response.isSuccessful) throw Exception("Feed fetch failed: ${response.code}")
             response.body?.string() ?: throw Exception("Empty response body")
-        }
-    }
-
-    private suspend fun fetchWithProxy(url: String): String = withContext(Dispatchers.IO) {
-        client.newCall(Request.Builder().url("https://api.allorigins.win/get?url=$url").build()).execute().use { response ->
-            if (!response.isSuccessful) throw Exception("Proxy fetch failed: ${response.code}")
-            NetworkLogic.extractProxyContent(response.body?.string() ?: throw Exception("Empty proxy response"))
         }
     }
 
