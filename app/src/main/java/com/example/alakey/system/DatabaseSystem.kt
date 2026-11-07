@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.room.Room
 import com.example.alakey.data.AppDatabase
 import com.example.alakey.data.MIGRATION_13_14
+import com.example.alakey.data.MIGRATION_14_15
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import javax.inject.Inject
@@ -34,6 +35,10 @@ internal fun legacyDecision(dbExists: Boolean, version: Int?, migrationFloor: In
     else -> LegacyDecision.PassThrough
 }
 
+/** Lowest schema with a real Migration; below it: backup + rebuild (C1).
+ *  Internal so the floor test pins THE constant, not a copy of it (M50). */
+internal const val MIGRATION_FLOOR = 13
+
 @Singleton
 class DatabaseSystem @Inject constructor(
     @ApplicationContext private val context: Context
@@ -52,7 +57,7 @@ class DatabaseSystem @Inject constructor(
         )
             // Real migrations from the floor up (C1 + M14); only a downgrade
             // may fall back destructively.
-            .addMigrations(MIGRATION_13_14)
+            .addMigrations(MIGRATION_13_14, MIGRATION_14_15)
             .fallbackToDestructiveMigrationOnDowngrade()
             .build()
     }
@@ -83,7 +88,19 @@ class DatabaseSystem @Inject constructor(
                     .onSuccess { Log.w(TAG, "Legacy DB v${decision.fromVersion} backed up to ${backup.name}; building fresh v${AppDatabase.SCHEMA_VERSION} database") }
                     .onFailure { Log.w(TAG, "Legacy DB backup failed; rebuilding without backup", it) }
 
-                dbFile.delete()
+                // M53: a surviving pre-floor file would make Room throw on
+                // EVERY launch (no migration, no destructive fallback at this
+                // version) — exactly the bricked launch the KDoc above rejects.
+                // A delete that fails renames the file aside so Room builds
+                // fresh instead of crash-looping.
+                if (!dbFile.delete()) {
+                    val unremovable = File(dbFile.parentFile, "$DB_NAME.unremovable-${java.lang.System.currentTimeMillis()}")
+                    if (dbFile.renameTo(unremovable)) {
+                        Log.e(TAG, "Legacy DB would not delete; renamed aside to ${unremovable.name}")
+                    } else {
+                        Log.e(TAG, "Legacy DB neither deleted nor renamed — Room will fail to open; clear app data if this persists")
+                    }
+                }
                 listOf("-wal", "-shm", "-journal").forEach { suffix ->
                     File(dbFile.parentFile, "$DB_NAME$suffix").delete()
                 }
@@ -94,7 +111,5 @@ class DatabaseSystem @Inject constructor(
     private companion object {
         const val DB_NAME = "alakey-db"
         const val TAG = "DatabaseSystem"
-        /** Lowest schema with a real Migration; below it: backup + rebuild (C1). */
-        const val MIGRATION_FLOOR = 13
     }
 }

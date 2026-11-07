@@ -34,7 +34,16 @@ class UniversalRepository @Inject constructor(
     suspend fun savePodcast(p: PodcastEntity) = dao.insertPodcast(p)
     suspend fun getPodcastById(id: String): PodcastEntity? = dao.getPodcastById(id)?.let { factsStore.hydrate(it) }
     suspend fun getPodcastsByTitle(title: String) = factsStore.hydrateAll(dao.getEpisodesByTitle(title))
-    suspend fun unsubscribe(title: String) = dao.deleteByTitle(title)
+    suspend fun unsubscribe(title: String) {
+        // M52(+SHARPEN): the episode rows went, their facts survived — and ids
+        // are a pure function of feed data, so a re-subscribe regenerated the
+        // SAME ids and hydrated the old queue/progress/download state back
+        // onto the fresh rows (INSERT IGNORE matched them). Facts die with
+        // their entity.
+        val ids = dao.getIdsByTitle(title)
+        dao.deleteByTitle(title)
+        if (ids.isNotEmpty()) factsStore.deleteFacts(ids)
+    }
 
     suspend fun updateProgress(id: String, progress: Long) = playback.updateProgress(id, progress)
     suspend fun updateLastPlayed(id: String, timestamp: Long) = playback.updateLastPlayed(id, timestamp)
@@ -55,7 +64,6 @@ class UniversalRepository @Inject constructor(
     suspend fun assertFact(entityId: String, attribute: String, value: String) = factsStore.assert(entityId, attribute, value)
     suspend fun compactFacts() = factsStore.compact()
     suspend fun getFacts(entityId: String) = factsStore.getFacts(entityId)
-    suspend fun getAttribute(entityId: String, attribute: String) = factsStore.getAttribute(entityId, attribute)
     suspend fun getAllFacts() = factsStore.getAllFacts()
 
     suspend fun getRecentLogs() = observability.getRecentLogs()

@@ -17,6 +17,24 @@ object InformationModel {
     const val ATTR_AUDIO_PATH = "episode.audioPath"
 
     /**
+     * L73: the readable fact vocabulary. The write side (FactStore.assert)
+     * rejects keys outside this set — previously arbitrary strings were
+     * storable forever and loaded into heap on every hydration while the
+     * reader's `when` dropped them silently.
+     */
+    val KNOWN_ATTRIBUTES: Set<String> = setOf(
+        ATTR_PROGRESS, ATTR_DOWNLOADED, ATTR_IN_QUEUE,
+        ATTR_QUEUE_ORDER, ATTR_LAST_PLAYED, ATTR_AUDIO_PATH
+    )
+
+    /** L73: strict boolean parse — toBoolean() maps ANY garbage to false. */
+    fun parseStrictBoolean(value: String, previous: Boolean): Boolean = when (value.trim()) {
+        "true" -> true
+        "false" -> false
+        else -> previous
+    }
+
+    /**
      * Hydrates a PodcastEntity with the latest known facts.
      * This "un-complects" the core entity from its volatile state.
      */
@@ -31,11 +49,17 @@ object InformationModel {
         facts.groupBy { it.attribute }.values.mapNotNull { it.maxByOrNull(FactEntity::tx) }.forEach { fact ->
             when (fact.attribute) {
                 ATTR_PROGRESS -> progress = fact.value.toLongOrNull() ?: progress
-                ATTR_DOWNLOADED -> isDownloaded = fact.value.toBoolean()
-                ATTR_IN_QUEUE -> isInQueue = fact.value.toBoolean()
+                // L73: strict parse — garbage keeps the previous flag instead of
+                // silently clearing it (toBoolean() mapped any junk to false).
+                ATTR_DOWNLOADED -> isDownloaded = parseStrictBoolean(fact.value, isDownloaded)
+                ATTR_IN_QUEUE -> isInQueue = parseStrictBoolean(fact.value, isInQueue)
                 ATTR_QUEUE_ORDER -> queueOrder = fact.value.toLongOrNull() ?: queueOrder
                 ATTR_LAST_PLAYED -> lastPlayed = fact.value.toLongOrNull() ?: lastPlayed
                 ATTR_AUDIO_PATH -> if (fact.value.isNotBlank()) audioUrl = fact.value
+                // L73: unknown keys are dropped by design, but now they are
+                // also un-writable (FactStore.assert rejects them) — this arm
+                // exists only for rows written before that gate.
+                else -> Unit
             }
         }
 

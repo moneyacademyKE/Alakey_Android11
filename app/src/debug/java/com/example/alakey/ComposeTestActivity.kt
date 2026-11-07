@@ -12,7 +12,7 @@ class ComposeTestActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            AlakeyTheme(darkTheme = true, dynamicColor = false) {
+            AlakeyTheme {
                 GlassDock(AppViewModel.Screen.Library, {})
             }
         }

@@ -4,7 +4,7 @@ import android.content.Context
 import android.graphics.Color as AndroidColor
 import android.graphics.drawable.BitmapDrawable
 import androidx.palette.graphics.Palette
-import coil.ImageLoader
+import coil.imageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult
 import com.example.alakey.data.PodcastPalette
@@ -18,7 +18,11 @@ import kotlinx.coroutines.withContext
 class PaletteExtractor @Inject constructor(@ApplicationContext private val context: Context) {
     suspend fun extract(url: String): PodcastPalette? {
         return try {
-            val loader = ImageLoader(context)
+            // M62: the app-wide Coil singleton — a fresh ImageLoader per call
+            // built its own OkHttpClient, memory/disk caches and executors, and
+            // fetched+stored the artwork a SECOND time beside the AsyncImage
+            // that renders it. Reuse the shared stack; no teardown is ours to do.
+            val loader = context.imageLoader
             val request = ImageRequest.Builder(context).data(url).allowHardware(false).build()
             val result = loader.execute(request) as? SuccessResult ?: return null
             val bitmap = (result.drawable as? BitmapDrawable)?.bitmap ?: return null
@@ -29,6 +33,9 @@ class PaletteExtractor @Inject constructor(@ApplicationContext private val conte
                 muted = palette.getMutedColor(AndroidColor.GRAY)
             )
         } catch (e: Exception) {
+            // L13 family: a palette failure is invisible by design fallback, but
+            // it is at least KNOWN now instead of a silent catch(e) -> null.
+            android.util.Log.d("PaletteExtractor", "Palette extraction failed for $url", e)
             null
         }
     }

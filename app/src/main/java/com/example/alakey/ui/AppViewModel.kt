@@ -6,6 +6,8 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.alakey.data.Chapter
+import com.example.alakey.data.suspendRunCatching
+import com.example.alakey.system.Monotonic
 import com.example.alakey.data.EventLogEntity
 import com.example.alakey.data.ItunesSearchResult
 import com.example.alakey.data.PodcastEntity
@@ -59,7 +61,10 @@ class AppViewModel @Inject constructor(
         val mutedColor: Int = AndroidColor.GRAY,
         val sleepTimerSeconds: Int = 0,
         val marketOps: Map<String, AsyncOp> = emptyMap(),
-        val downloadOps: Map<String, AsyncOp> = emptyMap()
+        val downloadOps: Map<String, AsyncOp> = emptyMap(),
+        // M55: derived with the state itself (see updateState) — a constructor
+        // field so changes to it are changes to UiState.
+        val filtered: List<PodcastEntity> = emptyList()
     )
 
     sealed interface Action {
@@ -106,12 +111,15 @@ class AppViewModel @Inject constructor(
     val sleepTimerTotalSeconds: StateFlow<Int> = playbackClient.sleepTimerTotalSeconds
     val sleepAtEpisodeEnd: StateFlow<Boolean> = playbackClient.sleepAtEpisodeEnd
 
-    private val _history = androidx.compose.runtime.mutableStateListOf<UiState>()
-    val history: List<UiState> get() = _history
     private var searchJob: Job? = null
-    private val searchGeneration = AtomicLong(0)
+    // L71: Main-confined (viewModelScope, Main.immediate) — the AtomicLong and
+    // ConcurrentHashMap advertised a thread-safety this class does not have and
+    // does not need. Plain types state the actual confinement.
+    private var searchGeneration = 0L
     private var chaptersLoadedFor: String? = null
-    private val chaptersCache = ConcurrentHashMap<String, List<Chapter>>()
+    private val chaptersCache = mutableMapOf<String, List<Chapter>>()
+    /** M71: one load per url while a suspend fetch is in flight. */
+    private val chaptersInFlight = mutableSetOf<String>()
 
     init {
         // Facts are append-only; collapse superseded rows once per app open (#57).
@@ -146,13 +154,15 @@ class AppViewModel @Inject constructor(
                 }
                 if (podcast != null && podcast.imageUrl != _uiState.value.current?.imageUrl) extractColor(podcast.imageUrl)
                 if (podcast != null && playback.currentMediaId != chaptersLoadedFor) loadChapters(podcast)
-                val now = System.currentTimeMillis()
-                val playingSave = playback.isPlaying && now - lastSaveMs >= PROGRESS_SAVE_INTERVAL_MS
-                val pauseSave = wasPlaying && !playback.isPlaying && now - lastSaveMs >= PROGRESS_SAVE_MIN_GAP_MS
+                // M68: throttle intervals on the monotonic clock — a wall-clock
+                // step stalled progress writes; lastPlayed itself stays wall-clock.
+                val mono = Monotonic.now()
+                val playingSave = playback.isPlaying && mono - lastSaveMs >= PROGRESS_SAVE_INTERVAL_MS
+                val pauseSave = wasPlaying && !playback.isPlaying && mono - lastSaveMs >= PROGRESS_SAVE_MIN_GAP_MS
                 if (podcast != null && playback.currentPosition > 0 && (playingSave || pauseSave)) {
-                    lastSaveMs = now
+                    lastSaveMs = mono
                     repo.updateProgress(podcast.id, playback.currentPosition)
-                    repo.updateLastPlayed(podcast.id, now)
+                    repo.updateLastPlayed(podcast.id, System.currentTimeMillis())
                 }
                 wasPlaying = playback.isPlaying
             }
@@ -237,31 +247,51 @@ class AppViewModel @Inject constructor(
     }
 
     private fun loadChapters(podcast: PodcastEntity) {
-        chaptersLoadedFor = podcast.id
         val url = podcast.chaptersUrl
         if (url.isNullOrBlank()) {
+            chaptersLoadedFor = podcast.id
             updateState { it.copy(chapters = emptyList()) }
             return
         }
+        // M71: optimistic set + no reset meant ONE failed fetch removed chapters
+        // for that episode until a DIFFERENT episode played — the fetch returns
+        // emptyList as data (getOrDefault), so there was no failure signal.
+        // Empty results are no longer cached: a transient failure is not
+        // "this episode has no chapters", and re-entering the episode re-fetches.
+        if (url in chaptersInFlight) return
+        chaptersLoadedFor = podcast.id
+        chaptersInFlight += url
         viewModelScope.launch {
-            val chapters = chaptersCache.getOrPut(url) { repo.fetchChapters(url) }
+            val chapters = chaptersCache[url] ?: repo.fetchChapters(url).also { fetched ->
+                if (fetched.isNotEmpty()) chaptersCache[url] = fetched
+            }
+            chaptersInFlight -= url
             if (_uiState.value.current?.id == podcast.id) updateState { it.copy(chapters = chapters) }
         }
     }
 
     private fun updateState(transform: (UiState) -> UiState) {
+        // M65: the time-travel buffer (50 retained UiState snapshots, written
+        // inside this CAS lambda, read by nothing since DebugOverlay lost its
+        // entry point) is gone — equal values pass through untouched.
+        // M55: the filtered library is DERIVED here, in the state, not memoized
+        // in the UI — the old remember keyed on data-class equality, which
+        // deliberately excludes the hydrated fields, so progress/queue/
+        // download-only changes froze "Continue"/"New" membership and order
+        // while audio played behind the tab.
         _uiState.update { current ->
-            val next = transform(current)
-            if (next != current) {
-                _history.add(next)
-                if (_history.size > 50) _history.removeAt(0)
+            transform(current).let { next ->
+                next.copy(filtered = LibraryFilters.apply(next.activeFilter, next.podcasts + next.optimisticPodcasts))
             }
-            next
         }
     }
 
     private fun emitEvent(event: UserEvent) { viewModelScope.launch { _userEvents.emit(event) } }
-    fun connect() = Unit
+    // L48/M64: was `= Unit` — the UI's own reconnect hook did nothing, and the
+    // controller ladder exhausted after 7.75s with no re-arm, so a session
+    // teardown slower than that left every command a null-safe no-op until
+    // process death. User intent now re-arms the rebuild.
+    fun connect() = playbackClient.requestReconnect()
     fun startSleepTimer(minutes: Int = 45) = playbackClient.startSleepTimer(minutes)
     fun startSleepTimerAtEnd() = playbackClient.startSleepTimerAtEnd()
     fun resetSleepTimer() = playbackClient.resetSleepTimer()
@@ -299,11 +329,11 @@ class AppViewModel @Inject constructor(
         }
         searchJob = viewModelScope.launch {
             delay(300)
-            val generation = searchGeneration.incrementAndGet()
+            val generation = ++searchGeneration
             repo.searchPodcasts(normalized)
-                .onSuccess { if (generation == searchGeneration.get()) _searchResults.value = it }
+                .onSuccess { if (generation == searchGeneration) _searchResults.value = it }
                 .onFailure { error ->
-                    if (generation == searchGeneration.get()) emitEvent(UserEvent.ShowError("Search failed: ${error.message}"))
+                    if (generation == searchGeneration) emitEvent(UserEvent.ShowError("Search failed: ${error.message}"))
                 }
         }
     }
@@ -351,7 +381,7 @@ class AppViewModel @Inject constructor(
     fun deleteDownload(podcast: PodcastEntity) {
         dispatch(Action.SetDownloadOp(podcast.id, AsyncOp.InFlight))
         viewModelScope.launch {
-            runCatching { repo.deleteDownload(podcast.id) }
+            suspendRunCatching { repo.deleteDownload(podcast.id) }
                 .onSuccess { dispatch(Action.SetDownloadOp(podcast.id, AsyncOp.Done)) }
                 .onFailure { dispatch(Action.SetDownloadOp(podcast.id, AsyncOp.Failed(it.message ?: "Delete failed"))) }
         }

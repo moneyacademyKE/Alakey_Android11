@@ -51,3 +51,16 @@ val MIGRATION_13_14 = object : Migration(13, 14) {
         Log.i(TAG, "M14: re-derived ${rewrites.size} guid-less episode id(s) to 64-bit")
     }
 }
+
+/**
+ * v14 → v15 (L72): drops `index_facts_attribute`. Its only consumer,
+ * FactDao.getFactsUsingAttribute, was deleted in round 3 — every surviving
+ * facts query filters on entityId (PK leading column / its index) or groups
+ * on (entityId, attribute). The index was pure write-path cost: maintained
+ * on every fact assert for a lookup nobody made.
+ */
+val MIGRATION_14_15 = object : Migration(14, 15) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("DROP INDEX IF EXISTS `index_facts_attribute`")
+    }
+}

@@ -108,7 +108,13 @@ class RssParserTest {
         )
 
         assertEquals(1, episodes.size)
-        assertEquals(EpisodeIds.derive(FEED_URL, audioUrl), episodes[0].id)
+        // M51: a PERSISTED identity function must be pinned to a golden value,
+        // not recomputed from itself — both sides of the old assertion came
+        // from the same oracle, so changing the hash kept every test green
+        // while every guid-less episode in every install got a new id
+        // (INSERT IGNORE stops matching → re-sync duplicates everything).
+        // Golden: SHA-256("https://example.com/feed.xml|https://example.com/audio/episode-2.mp3"), first 8 bytes, %016x.
+        assertEquals("d3aa7f6019787d9b", episodes[0].id)
         assertEquals(16, episodes[0].id.length)
         assertEquals("Episode Two", episodes[0].episodeTitle)
     }

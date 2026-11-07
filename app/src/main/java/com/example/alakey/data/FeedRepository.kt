@@ -45,7 +45,7 @@ class FeedRepository @Inject constructor(
     // Single pass: feed fetch, parse, and insert are deterministic — retrying the whole
     // pipeline on a parse failure just re-downloads the feed three times (observed on-device).
     suspend fun subscribe(url: String): Result<Boolean> = withContext(Dispatchers.IO) {
-        runCatching {
+        suspendRunCatching {
             val xmlContent = fetchValidFeed(url)
             val items = RssParser.parse(xmlContent, url)
             if (items.isEmpty()) throw Exception("No episodes found in feed")
@@ -57,12 +57,20 @@ class FeedRepository @Inject constructor(
         }
     }
 
-    suspend fun syncAll() = syncMutex.withLock {
+    /** M67: per-feed failures are data — the worker decides retryability from this. */
+    data class SyncOutcome(val feeds: Int, val failures: Int) {
+        val allFailed: Boolean get() = feeds > 0 && failures == feeds
+    }
+
+    suspend fun syncAll(): SyncOutcome = syncMutex.withLock {
         withContext(Dispatchers.IO) {
-            dao.getSubscribedFeeds().forEach { url ->
+            val feeds = dao.getSubscribedFeeds()
+            var failures = 0
+            feeds.forEach { url ->
                 // L4: per-feed failures belong in the event log the app can
                 // query, not a printStackTrace nobody reads.
                 subscribe(url).exceptionOrNull()?.let { error ->
+                    failures++
                     Log.w("FeedRepository", "Feed sync failed: $url", error)
                     eventLogDao.logEvent(
                         EventLogEntity(type = "SYNC_FEED", payload = url, status = "FAILED", timestamp = System.currentTimeMillis())
@@ -71,12 +79,13 @@ class FeedRepository @Inject constructor(
             }
             // M12: keep the event log bounded — one purge per sync, after writes.
             eventLogDao.purgeOlderThan(System.currentTimeMillis() - EventLog.RETENTION_MS)
+            SyncOutcome(feeds = feeds.size, failures = failures)
         }
     }
 
     /** Podcasting 2.0 chapters JSON — best effort; missing/broken files yield an empty list. */
     suspend fun fetchChapters(url: String): List<Chapter> = withContext(Dispatchers.IO) {
-        runCatching {
+        suspendRunCatching {
             client.newCall(Request.Builder().url(url).build()).execute().use { response ->
                 if (!response.isSuccessful) return@use emptyList()
                 ChapterParser.parse(response.body?.string().orEmpty())
@@ -88,7 +97,7 @@ class FeedRepository @Inject constructor(
         // M2: the third-party CORS-proxy fallback is gone — it leaked every
         // feed URL to api.allorigins.win on direct-fetch failure. A failed
         // direct fetch now surfaces as a logged sync failure instead.
-        val direct = runCatching { fetchDirect(url) }.getOrNull()
+        val direct = suspendRunCatching { fetchDirect(url) }.getOrNull()
         if (direct.isValidXmlFeed()) return direct.orEmpty()
 
         throw Exception("Failed to fetch valid feed content")

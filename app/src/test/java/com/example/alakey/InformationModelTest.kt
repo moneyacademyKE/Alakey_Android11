@@ -88,4 +88,30 @@ class InformationModelTest {
         assertEquals("/files/test.mp3", hydrated.audioUrl)
         assertEquals(true, hydrated.isDownloaded)
     }
+
+    @Test
+    fun `L73 - garbage boolean keeps the previous flag instead of clearing it`() {
+        val base = PodcastEntity(id = "test", title = "T", episodeTitle = "E", description = "D", imageUrl = "I", audioUrl = "A")
+        base.isDownloaded = true
+        val corrupt = listOf(FactEntity("test", InformationModel.ATTR_DOWNLOADED, "corrupt-junk", tx = 100))
+        assertEquals(true, InformationModel.hydrate(base, corrupt).isDownloaded)
+
+        val honestFalse = listOf(FactEntity("test", InformationModel.ATTR_DOWNLOADED, "false", tx = 100))
+        assertEquals(false, InformationModel.hydrate(base, honestFalse).isDownloaded)
+    }
+
+    @Test
+    fun `L73 - known attributes exactly match the six hydrate arms`() {
+        assertEquals(
+            setOf(
+                InformationModel.ATTR_PROGRESS,
+                InformationModel.ATTR_DOWNLOADED,
+                InformationModel.ATTR_IN_QUEUE,
+                InformationModel.ATTR_QUEUE_ORDER,
+                InformationModel.ATTR_LAST_PLAYED,
+                InformationModel.ATTR_AUDIO_PATH
+            ),
+            InformationModel.KNOWN_ATTRIBUTES
+        )
+    }
 }

@@ -24,20 +24,24 @@ class AudioService : MediaLibraryService() {
     override fun onCreate() {
         super.onCreate()
         audioSystem.start()
-        val player = audioSystem.player ?: throw IllegalStateException("AudioSystem failed to start")
+        // Invariant, not a handled failure (L63): start() either publishes a
+        // player or throws inside onCreate — there is no reachable null here.
+        // checkNotNull states the invariant without advertising recovery.
+        val player = checkNotNull(audioSystem.player) { "AudioSystem.start() must publish a player" }
         session = MediaLibrarySession.Builder(this, player, object : MediaLibrarySession.Callback {} )
             .setSessionActivity(PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE))
             .build()
     }
 
     override fun onGetSession(info: MediaSession.ControllerInfo): MediaLibrarySession? = when {
-        // M3: the session previously accepted every controller — any app could
-        // connect, control playback and browse the library tree. Own package
-        // and platform media bridges (BT/Auto use the compat api package)
-        // pass; everything else is refused. (isTrusted is not public in
-        // media3 1.2.0 — revisit when the dep is bumped.)
-        info.packageName == packageName -> session
-        info.packageName == COMPAT_MEDIA_PACKAGE -> session
+        // H4: platform bridges (SystemUI lockscreen, BT AVRCP, Auto) connect as
+        // legacy controllers — media3 1.2.0 reports them as controllerVersion 0.
+        // The compat package name this gate previously allowlisted exists
+        // nowhere in the pinned AAR (verified via javap), so every platform
+        // controller was rejected and lockscreen/headset control died.
+        // Third-party apps on modern media3 report a real version and are
+        // still refused. isTrusted() becomes public at the H2 media3 bump.
+        acceptsController(info.packageName, info.controllerVersion, packageName) -> session
         else -> {
             android.util.Log.w(TAG, "Rejecting media controller: ${info.packageName}")
             null
@@ -76,8 +80,15 @@ class AudioService : MediaLibraryService() {
         const val NOTIFICATION_ID = 1
         const val CHANNEL_ID = "playback_placeholder"
         const val TAG = "AudioService"
-
-        /** Package used by platform media bridges (Bluetooth, Auto) on connect. */
-        const val COMPAT_MEDIA_PACKAGE = "android.support.v4.media.session.api"
     }
 }
+
+/**
+ * M3/H4 gate: own package always passes; platform media bridges
+ * (lockscreen, Bluetooth AVRCP, Android Auto) connect as legacy
+ * controllers (controllerVersion 0) and must pass; everything else —
+ * modern media3 third-party clients — is refused.
+ */
+internal fun acceptsController(packageName: String, controllerVersion: Int, ownPackage: String): Boolean =
+    packageName == ownPackage ||
+        controllerVersion == MediaSession.ControllerInfo.LEGACY_CONTROLLER_VERSION

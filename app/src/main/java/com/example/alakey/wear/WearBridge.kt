@@ -2,6 +2,7 @@ package com.example.alakey.wear
 
 import android.content.Context
 import android.util.Log
+import com.example.alakey.system.Monotonic
 import com.example.alakey.tile.TileContract
 import com.example.alakey.ui.AppViewModel
 import com.google.android.gms.common.ConnectionResult
@@ -45,14 +46,18 @@ object WearBridge {
             return
         }
         val appContext = context.applicationContext
-        scope.launch(Dispatchers.Default) {
+        val job = scope.launch(Dispatchers.Default) {
             var lastKey = ""
             var lastPushMs = 0L
             var lastNodeCheckMs = 0L
             while (true) {
+                // M68: interval math on the monotonic clock — a wall-clock step
+                // made now-lastX negative and froze the tick/presence checks;
+                // timestampMs stays wall-clock (crosses to the watch tile).
                 val now = System.currentTimeMillis()
-                if (now - lastNodeCheckMs >= NODE_CHECK_MS) {
-                    lastNodeCheckMs = now
+                val mono = Monotonic.now()
+                if (mono - lastNodeCheckMs >= NODE_CHECK_MS) {
+                    lastNodeCheckMs = mono
                     refreshWatchPresence(appContext)
                 }
                 if (watchPresent) {
@@ -67,16 +72,21 @@ object WearBridge {
                         timestampMs = now,
                     )
                     val key = "${np.show} ${np.title} ${np.isPlaying} ${np.isBuffering}"
-                    val dueTick = np.isPlaying && now - lastPushMs >= TICK_MS
+                    val dueTick = np.isPlaying && mono - lastPushMs >= TICK_MS
                     if (key != lastKey || dueTick) {
                         lastKey = key
-                        lastPushMs = np.timestampMs
+                        lastPushMs = mono
                         push(appContext, np)
                     }
                 }
                 delay(if (watchPresent) POLL_MS else IDLE_POLL_MS)
             }
         }
+        // H10: the latch is process-global but the loop dies with the caller's
+        // scope (viewModelScope on Activity finish). Without releasing it here,
+        // the next start() returns at the CAS guard and the watch tile never
+        // receives another frame for the rest of the process lifetime.
+        job.invokeOnCompletion { started.set(false) }
     }
 
     private fun refreshWatchPresence(context: Context) {

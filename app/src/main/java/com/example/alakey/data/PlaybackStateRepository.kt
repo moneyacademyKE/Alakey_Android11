@@ -2,6 +2,7 @@ package com.example.alakey.data
 
 import com.example.alakey.domain.InformationModel
 import com.example.alakey.domain.PureLogic
+import com.example.alakey.domain.QueueOrders
 import com.example.alakey.system.DatabaseSystem
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -26,17 +27,23 @@ class PlaybackStateRepository @Inject constructor(
 
     suspend fun addToQueue(id: String) {
         factStore.assert(id, InformationModel.ATTR_IN_QUEUE, "true")
-        factStore.assert(id, InformationModel.ATTR_QUEUE_ORDER, System.currentTimeMillis().toString())
+        // M69: positions are ordinals computed from the queue present —
+        // a wall-clock stamp tied order to the date (same-ms ties, clock-step
+        // reordering, a ~1.7e12 ordinal base).
+        factStore.assert(id, InformationModel.ATTR_QUEUE_ORDER, QueueOrders.append(queueOrders(exclude = id)).toString())
     }
 
     suspend fun addToQueueNext(id: String) {
-        val queue = factStore.hydrateAll(dao.getAllPodcasts().firstValue())
-            .filter { it.isInQueue && it.id != id }
-            .sortedBy { it.queueOrder }
-        val firstOrder = queue.firstOrNull()?.queueOrder ?: System.currentTimeMillis()
+        // M69: min-1, never currentTimeMillis-1 — "play next" must land ahead
+        // of whatever is queued regardless of the clock.
         factStore.assert(id, InformationModel.ATTR_IN_QUEUE, "true")
-        factStore.assert(id, InformationModel.ATTR_QUEUE_ORDER, (firstOrder - 1).toString())
+        factStore.assert(id, InformationModel.ATTR_QUEUE_ORDER, QueueOrders.playNext(queueOrders(exclude = id)).toString())
     }
+
+    private suspend fun queueOrders(exclude: String?): List<Long> =
+        factStore.hydrateAll(dao.getAllPodcasts().firstValue())
+            .filter { it.isInQueue && it.id != exclude }
+            .map { it.queueOrder }
 
     suspend fun removeFromQueue(id: String) {
         factStore.assert(id, InformationModel.ATTR_IN_QUEUE, "false")
