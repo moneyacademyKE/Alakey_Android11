@@ -264,8 +264,8 @@ private fun LibraryContent(state: AppViewModel.UiState, vm: AppViewModel, onAdd:
             items(filters) { filter ->
                 val isSelected = filter == state.activeFilter
                 Text(
-                    filter, color = if (isSelected) Color(0xFF00F0FF) else Color.White.copy(.7f),
-                    modifier = Modifier.clip(RoundedCornerShape(50)).background(if (isSelected) Color(0xFF00F0FF).copy(.3f) else Color.White.copy(.1f))
+                    filter, color = if (isSelected) MaterialTheme.colorScheme.primary else Color.White.copy(.7f),
+                    modifier = Modifier.clip(RoundedCornerShape(50)).background(if (isSelected) MaterialTheme.colorScheme.primary.copy(.3f) else Color.White.copy(.1f))
                         .clickable { vm.setFilter(filter) }.padding(horizontal = 16.dp, vertical = 12.dp)
                         .semantics { role = Role.Tab; selected = isSelected; contentDescription = "$filter filter" }
                 )
