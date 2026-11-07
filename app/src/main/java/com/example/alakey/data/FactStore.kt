@@ -33,6 +33,9 @@ class FactStore @Inject constructor(private val dbSystem: com.example.alakey.sys
     suspend fun getFacts(entityId: String): List<FactEntity> = factDao.getFactsUsingEntity(entityId)
     suspend fun getAllFacts(): List<FactEntity> = factDao.getAllFacts()
 
+    /** M52: facts die with their entity — see FactDao.deleteByEntityIds. */
+    suspend fun deleteFacts(ids: List<String>) = factDao.deleteByEntityIds(ids)
+
     suspend fun getAttribute(entityId: String, attribute: String): String? {
         return factDao.getFactsUsingEntity(entityId)
             .filter { it.attribute == attribute }

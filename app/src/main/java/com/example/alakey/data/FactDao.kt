@@ -26,6 +26,14 @@ interface FactDao {
     suspend fun getAllFacts(): List<FactEntity>
 
     /**
+     * M52: unsubscribe must delete the episodes' facts. Episode ids are a pure
+     * function of feed data, so surviving facts RESURRECT on re-subscription —
+     * the fresh rows hydrate the old queue/progress/download state back in.
+     */
+    @Query("DELETE FROM facts WHERE entityId IN (:ids)")
+    suspend fun deleteByEntityIds(ids: List<String>)
+
+    /**
      * Retention sweep: drop every superseded fact, keeping the latest tx per
      * (entityId, attribute) — exactly the rows getLatestFacts/hydrate consume.
      * Lossless for values: same-ms re-asserts collide on the composite PK and
