@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!--
+      M59: replaces the opaque 1024x1024 JPEG. An adaptive-icon foreground
+      is masked (circle/squircle/pill) with a 66dp safe zone inside the 108dp
+      canvas, so a full-bleed photograph loses its edges on every launcher
+      shape; this glyph fits the zone. The solid fill doubles as the
+      monochrome alpha mask for Android 13+ themed icons — one drawable,
+      both roles.
+    -->
+    <path
+        android:fillColor="#00F0FF"
+        android:pathData="M43,36 L43,72 L73,54 Z" />
+</vector>
