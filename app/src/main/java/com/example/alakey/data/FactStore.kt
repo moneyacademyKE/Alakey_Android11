@@ -21,6 +21,16 @@ class FactStore @Inject constructor(private val dbSystem: com.example.alakey.sys
         .shareIn(CoroutineScope(SupervisorJob() + Dispatchers.IO), SharingStarted.WhileSubscribed(5_000), replay = 1)
 
     suspend fun assert(entityId: String, attribute: String, value: String) {
+        // L73: the write vocabulary was open — the REPL could store arbitrary
+        // keys forever while the reader dropped them silently. Unknown keys
+        // are rejected at the boundary now.
+        if (attribute !in InformationModel.KNOWN_ATTRIBUTES) {
+            android.util.Log.w(
+                "FactStore",
+                "Rejecting fact with unknown attribute '$attribute' (entity $entityId) — known: ${InformationModel.KNOWN_ATTRIBUTES.joinToString()}"
+            )
+            return
+        }
         factDao.insert(FactEntity(entityId, attribute, value))
     }
 
