@@ -61,7 +61,10 @@ class AppViewModel @Inject constructor(
         val mutedColor: Int = AndroidColor.GRAY,
         val sleepTimerSeconds: Int = 0,
         val marketOps: Map<String, AsyncOp> = emptyMap(),
-        val downloadOps: Map<String, AsyncOp> = emptyMap()
+        val downloadOps: Map<String, AsyncOp> = emptyMap(),
+        // M55: derived with the state itself (see updateState) — a constructor
+        // field so changes to it are changes to UiState.
+        val filtered: List<PodcastEntity> = emptyList()
     )
 
     sealed interface Action {
@@ -271,7 +274,16 @@ class AppViewModel @Inject constructor(
         // M65: the time-travel buffer (50 retained UiState snapshots, written
         // inside this CAS lambda, read by nothing since DebugOverlay lost its
         // entry point) is gone — equal values pass through untouched.
-        _uiState.update(transform)
+        // M55: the filtered library is DERIVED here, in the state, not memoized
+        // in the UI — the old remember keyed on data-class equality, which
+        // deliberately excludes the hydrated fields, so progress/queue/
+        // download-only changes froze "Continue"/"New" membership and order
+        // while audio played behind the tab.
+        _uiState.update { current ->
+            transform(current).let { next ->
+                next.copy(filtered = LibraryFilters.apply(next.activeFilter, next.podcasts + next.optimisticPodcasts))
+            }
+        }
     }
 
     private fun emitEvent(event: UserEvent) { viewModelScope.launch { _userEvents.emit(event) } }

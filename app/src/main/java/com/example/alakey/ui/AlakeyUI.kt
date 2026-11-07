@@ -263,9 +263,6 @@ private fun HeaderAction(icon: androidx.compose.ui.graphics.vector.ImageVector, 
 private fun LibraryContent(state: AppViewModel.UiState, vm: AppViewModel, onAdd: () -> Unit, onTimer: () -> Unit) {
     val filters = listOf("All", "Continue", "New", "Short")
     var expanded by rememberSaveable { mutableStateOf(emptyList<String>()) }
-    val filtered = remember(state.podcasts, state.optimisticPodcasts, state.activeFilter) {
-        LibraryFilters.apply(state.activeFilter, state.podcasts + state.optimisticPodcasts)
-    }
     Column(Modifier.fillMaxSize()) {
         LazyRow(Modifier.fillMaxWidth().padding(vertical = 12.dp), contentPadding = PaddingValues(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(filters) { filter ->
@@ -283,8 +280,8 @@ private fun LibraryContent(state: AppViewModel.UiState, vm: AppViewModel, onAdd:
                 val hero = state.current ?: state.podcasts.maxByOrNull { it.lastPlayed }
                 hero?.let { SpotlightHero(it, state.sleepTimerSeconds, { vm.play(it) }, { vm.addToQueue(it) }, vm::playPreviousEpisode, vm::playNextEpisode, onTimer, { vm.setPlayerOpen(true) }) }
             }
-            if (filtered.isEmpty()) item { EmptyState(Icons.Rounded.FilterListOff, if (state.podcasts.isEmpty()) "Build your library" else "No episodes found", "Try a different filter or add more shows.", if (state.podcasts.isEmpty()) "Add podcast" else null, onAdd) }
-            val groups = if (state.activeFilter == "All") filtered.groupBy { it.title } else mapOf("Results" to filtered)
+            if (state.filtered.isEmpty()) item { EmptyState(Icons.Rounded.FilterListOff, if (state.podcasts.isEmpty()) "Build your library" else "No episodes found", "Try a different filter or add more shows.", if (state.podcasts.isEmpty()) "Add podcast" else null, onAdd) }
+            val groups = if (state.activeFilter == "All") state.filtered.groupBy { it.title } else mapOf("Results" to state.filtered)
             groups.forEach { (title, episodes) ->
                 if (episodes.isNotEmpty()) {
                     item(key = "header_$title") {
