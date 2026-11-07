@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.room.Room
 import com.example.alakey.data.AppDatabase
 import com.example.alakey.data.MIGRATION_13_14
+import com.example.alakey.data.MIGRATION_14_15
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import javax.inject.Inject
@@ -56,7 +57,7 @@ class DatabaseSystem @Inject constructor(
         )
             // Real migrations from the floor up (C1 + M14); only a downgrade
             // may fall back destructively.
-            .addMigrations(MIGRATION_13_14)
+            .addMigrations(MIGRATION_13_14, MIGRATION_14_15)
             .fallbackToDestructiveMigrationOnDowngrade()
             .build()
     }

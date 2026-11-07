@@ -4,8 +4,9 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 
 object RoomSchema {
+    // v15 (L72): facts.attribute index dropped — no query served it.
     // v14 (M14): guid-less episode ids re-derived to 64-bit — see Migrations.kt.
-    const val VERSION = 14
+    const val VERSION = 15
 }
 
 @Database(

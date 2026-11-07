@@ -8,7 +8,10 @@ import androidx.room.Index
     primaryKeys = ["entityId", "attribute", "tx"],
     indices = [
         Index(value = ["entityId"]),
-        Index(value = ["attribute"]),
+        // L72: the attribute-only index is gone — its sole consumer
+        // (FactDao.getFactsUsingAttribute) was deleted in round 3; every
+        // surviving query filters on entityId or groups on the PK's
+        // leading columns. Dropped in MIGRATION_14_15.
         Index(value = ["tx"])
     ]
 )
