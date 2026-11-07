@@ -58,4 +58,33 @@ interface FactDao {
         ) f2 ON f1.entityId = f2.entityId AND f1.attribute = f2.attribute AND f1.tx = f2.maxTx
     """)
     suspend fun getLatestFacts(entityId: String): List<FactEntity>
+
+    /**
+     * M72: tree-wide latest-per-(entityId, attribute) — getLatestFacts without
+     * the entityId WHERE. Every write previously re-read and re-emitted the
+     * FULL lifetime fact history to three separate collectors (library, queue,
+     * inbox) that each re-hydrate every entity; these emit exactly the rows
+     * hydrate consumes. [InformationModel.hydrate] resolves latest-per-attribute
+     * itself, so one row per key is semantically identical to full history.
+     */
+    @Query("""
+        SELECT f1.* FROM facts f1
+        INNER JOIN (
+            SELECT entityId, attribute, MAX(tx) as maxTx
+            FROM facts
+            GROUP BY entityId, attribute
+        ) f2 ON f1.entityId = f2.entityId AND f1.attribute = f2.attribute AND f1.tx = f2.maxTx
+    """)
+    fun getLatestFactsFlow(): kotlinx.coroutines.flow.Flow<List<FactEntity>>
+
+    /** M72's suspend twin: batched hydration reads, not lifetime history. */
+    @Query("""
+        SELECT f1.* FROM facts f1
+        INNER JOIN (
+            SELECT entityId, attribute, MAX(tx) as maxTx
+            FROM facts
+            GROUP BY entityId, attribute
+        ) f2 ON f1.entityId = f2.entityId AND f1.attribute = f2.attribute AND f1.tx = f2.maxTx
+    """)
+    suspend fun getLatestFactsAll(): List<FactEntity>
 }
