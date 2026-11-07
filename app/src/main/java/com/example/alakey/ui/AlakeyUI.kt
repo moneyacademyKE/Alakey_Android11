@@ -57,6 +57,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.alakey.data.ItunesSearchResult
 import com.example.alakey.data.PodcastEntity
 import com.example.alakey.domain.HeadsetResumeLogic
+import com.example.alakey.system.Monotonic
 
 @Composable
 fun MainContent() {
@@ -431,7 +432,7 @@ class MotionDetector(private val onShake: () -> Unit) : android.hardware.SensorE
     private val shakeThreshold = 2500
     override fun onSensorChanged(event: android.hardware.SensorEvent?) {
         if (event == null) return
-        val now = System.currentTimeMillis()
+        val now = Monotonic.now()
         if (now - lastUpdate > 100) {
             val diff = now - lastUpdate
             lastUpdate = now

@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.alakey.data.Chapter
+import com.example.alakey.system.Monotonic
 import com.example.alakey.data.EventLogEntity
 import com.example.alakey.data.ItunesSearchResult
 import com.example.alakey.data.PodcastEntity
@@ -146,13 +147,15 @@ class AppViewModel @Inject constructor(
                 }
                 if (podcast != null && podcast.imageUrl != _uiState.value.current?.imageUrl) extractColor(podcast.imageUrl)
                 if (podcast != null && playback.currentMediaId != chaptersLoadedFor) loadChapters(podcast)
-                val now = System.currentTimeMillis()
-                val playingSave = playback.isPlaying && now - lastSaveMs >= PROGRESS_SAVE_INTERVAL_MS
-                val pauseSave = wasPlaying && !playback.isPlaying && now - lastSaveMs >= PROGRESS_SAVE_MIN_GAP_MS
+                // M68: throttle intervals on the monotonic clock — a wall-clock
+                // step stalled progress writes; lastPlayed itself stays wall-clock.
+                val mono = Monotonic.now()
+                val playingSave = playback.isPlaying && mono - lastSaveMs >= PROGRESS_SAVE_INTERVAL_MS
+                val pauseSave = wasPlaying && !playback.isPlaying && mono - lastSaveMs >= PROGRESS_SAVE_MIN_GAP_MS
                 if (podcast != null && playback.currentPosition > 0 && (playingSave || pauseSave)) {
-                    lastSaveMs = now
+                    lastSaveMs = mono
                     repo.updateProgress(podcast.id, playback.currentPosition)
-                    repo.updateLastPlayed(podcast.id, now)
+                    repo.updateLastPlayed(podcast.id, System.currentTimeMillis())
                 }
                 wasPlaying = playback.isPlaying
             }

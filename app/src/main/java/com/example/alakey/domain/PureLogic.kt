@@ -5,6 +5,21 @@ import java.util.Locale
 import java.text.SimpleDateFormat
 
 /**
+ * M69: queue positions are ordinals, not timestamps. A wall-clock stamp tied
+ * queue order to the date: same-millisecond adds tied, a backward clock step
+ * reordered the user's explicit "play next", and the empty-queue seed anchored
+ * the ordinal space at ~1.7e12. Existing installs keep their stored orders —
+ * append/playNext are computed from the data present, never from the clock.
+ */
+object QueueOrders {
+    /** Append lands after every existing entry. */
+    fun append(existingOrders: List<Long>): Long = (existingOrders.maxOrNull() ?: 0L) + 1L
+
+    /** "Play next" lands before every existing entry. */
+    fun playNext(existingOrders: List<Long>): Long = (existingOrders.minOrNull() ?: 0L) - 1L
+}
+
+/**
  * Pure Domain Logic.
  * Contains only deterministic functions. No IO, no State.
  */

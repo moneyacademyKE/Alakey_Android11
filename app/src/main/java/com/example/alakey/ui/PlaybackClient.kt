@@ -10,6 +10,7 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.example.alakey.data.PodcastEntity
 import com.example.alakey.service.AudioService
+import com.example.alakey.system.Monotonic
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -82,14 +83,11 @@ class PlaybackClient @Inject constructor(
     private var reconcileJob: Job? = null
     @Volatile private var cleanedUp = false
 
-    // Sleep Timer
-    private val _sleepTimerSeconds = MutableStateFlow(0)
-    val sleepTimerSeconds: StateFlow<Int> = _sleepTimerSeconds.asStateFlow()
+    // Sleep Timer (L69: deadline-derived; extracted to SleepTimer)
+    private val sleepTimer = SleepTimer(scope) { pause() }
+    val sleepTimerSeconds: StateFlow<Int> get() = sleepTimer.seconds
     /** Duration the timer was armed with; 0 when disarmed. Lets UI render a drain fraction. */
-    private val _sleepTimerTotalSeconds = MutableStateFlow(0)
-    val sleepTimerTotalSeconds: StateFlow<Int> = _sleepTimerTotalSeconds.asStateFlow()
-    private var sleepTimerJob: Job? = null
-    private var initialSleepDuration = 0
+    val sleepTimerTotalSeconds: StateFlow<Int> get() = sleepTimer.totalSeconds
 
     // Smart Resume: tracked at the listener so EVERY pause source counts
     // (notification, headset, lockscreen — not just in-app taps).
@@ -169,7 +167,7 @@ class PlaybackClient @Inject constructor(
         controller?.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 processEvent(PlaybackEvent.IsPlayingChanged(isPlaying))
-                if (!isPlaying) lastPauseTime = System.currentTimeMillis()
+                if (!isPlaying) lastPauseTime = Monotonic.now()
                 if (isPlaying) startProgressPolling() else stopProgressPolling()
             }
 
@@ -342,7 +340,7 @@ class PlaybackClient @Inject constructor(
                 .takeIf { _state.value.currentMediaId == _desiredState.value.mediaItem?.mediaId }
 
     fun resume() {
-        if (lastPauseTime > 0 && (System.currentTimeMillis() - lastPauseTime) > RESUME_REWIND_AFTER_MS) {
+        if (lastPauseTime > 0 && (Monotonic.now() - lastPauseTime) > RESUME_REWIND_AFTER_MS) {
             rewindSeekTarget(knownPosition(), RESUME_REWIND_MS)?.let { target ->
                 _desiredState.update { it.copy(seekPosition = target) }
                 Log.d("PlaybackClient", "Smart Resume: Rewind Intent Set")
@@ -398,45 +396,26 @@ class PlaybackClient @Inject constructor(
     }
 
     fun startSleepTimer(minutes: Int) {
-        sleepTimerJob?.cancel()
         _sleepAtEpisodeEnd.value = false
-        initialSleepDuration = minutes * 60
-        _sleepTimerSeconds.value = initialSleepDuration
-        _sleepTimerTotalSeconds.value = initialSleepDuration
         // Never force playback: a timer set while paused must stay paused.
-
-        sleepTimerJob = scope.launch {
-            while (_sleepTimerSeconds.value > 0) {
-                delay(1000)
-                _sleepTimerSeconds.value--
-            }
-            _sleepTimerTotalSeconds.value = 0
-            pause()
-        }
+        sleepTimer.start(minutes)
     }
 
     /** Pause when the current episode ends. Countdown display mirrors remaining episode time. */
     fun startSleepTimerAtEnd() {
-        sleepTimerJob?.cancel()
         _sleepAtEpisodeEnd.value = true
         val c = controller ?: return
-        _sleepTimerSeconds.value = ((c.duration - c.currentPosition).coerceAtLeast(0) / 1000).toInt()
-        _sleepTimerTotalSeconds.value = _sleepTimerSeconds.value
+        sleepTimer.displayOnly(((c.duration - c.currentPosition).coerceAtLeast(0) / 1000).toInt())
     }
 
     fun resetSleepTimer() {
         if (_sleepAtEpisodeEnd.value) return
-        if (_sleepTimerSeconds.value > 0) {
-            _sleepTimerSeconds.value = initialSleepDuration
-        }
+        sleepTimer.reset()
     }
 
     fun cancelSleepTimer() {
-        sleepTimerJob?.cancel()
         _sleepAtEpisodeEnd.value = false
-        initialSleepDuration = 0
-        _sleepTimerSeconds.value = 0
-        _sleepTimerTotalSeconds.value = 0
+        sleepTimer.cancel()
     }
 
     private fun persistedSpeed(): Float =
@@ -445,7 +424,7 @@ class PlaybackClient @Inject constructor(
     fun cleanup() {
         cleanedUp = true
         stopProgressPolling()
-        sleepTimerJob?.cancel()
+        sleepTimer.cancel()
         reconnectJob?.cancel()
         controllerFuture?.let { MediaController.releaseFuture(it) }
     }
