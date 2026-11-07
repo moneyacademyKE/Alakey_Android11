@@ -45,7 +45,7 @@ class FeedRepository @Inject constructor(
     // Single pass: feed fetch, parse, and insert are deterministic — retrying the whole
     // pipeline on a parse failure just re-downloads the feed three times (observed on-device).
     suspend fun subscribe(url: String): Result<Boolean> = withContext(Dispatchers.IO) {
-        runCatching {
+        suspendRunCatching {
             val xmlContent = fetchValidFeed(url)
             val items = RssParser.parse(xmlContent, url)
             if (items.isEmpty()) throw Exception("No episodes found in feed")
@@ -85,7 +85,7 @@ class FeedRepository @Inject constructor(
 
     /** Podcasting 2.0 chapters JSON — best effort; missing/broken files yield an empty list. */
     suspend fun fetchChapters(url: String): List<Chapter> = withContext(Dispatchers.IO) {
-        runCatching {
+        suspendRunCatching {
             client.newCall(Request.Builder().url(url).build()).execute().use { response ->
                 if (!response.isSuccessful) return@use emptyList()
                 ChapterParser.parse(response.body?.string().orEmpty())
@@ -97,7 +97,7 @@ class FeedRepository @Inject constructor(
         // M2: the third-party CORS-proxy fallback is gone — it leaked every
         // feed URL to api.allorigins.win on direct-fetch failure. A failed
         // direct fetch now surfaces as a logged sync failure instead.
-        val direct = runCatching { fetchDirect(url) }.getOrNull()
+        val direct = suspendRunCatching { fetchDirect(url) }.getOrNull()
         if (direct.isValidXmlFeed()) return direct.orEmpty()
 
         throw Exception("Failed to fetch valid feed content")
