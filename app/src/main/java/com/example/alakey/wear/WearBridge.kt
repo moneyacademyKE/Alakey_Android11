@@ -1,6 +1,7 @@
 package com.example.alakey.wear
 
 import android.content.Context
+import android.util.Log
 import com.example.alakey.tile.TileContract
 import com.example.alakey.ui.AppViewModel
 import com.google.android.gms.common.ConnectionResult
@@ -12,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Phone -> watch: pushes the existing UiState projection onto the Wear data
@@ -22,41 +24,68 @@ object WearBridge {
     private const val POLL_MS = 2_000L
     private const val TICK_MS = 15_000L
 
+    // M10: no paired watch -> poll slowly instead of burning a 2s loop forever.
+    private const val IDLE_POLL_MS = 30_000L
+    private const val NODE_CHECK_MS = 30_000L
+    private const val TAG = "WearBridge"
+
+    private val started = AtomicBoolean(false)
+
+    /** Last known watch presence; refreshed every NODE_CHECK_MS. */
     @Volatile
-    private var started = false
+    private var watchPresent = false
 
     fun start(context: Context, scope: CoroutineScope, uiState: StateFlow<AppViewModel.UiState>) {
-        if (started) return
+        // M10: @Volatile check-then-act let two start() calls spawn two loops.
+        if (!started.compareAndSet(false, true)) return
         if (GoogleApiAvailability.getInstance()
                 .isGooglePlayServicesAvailable(context) != ConnectionResult.SUCCESS
         ) {
+            started.set(false)
             return
         }
-        started = true
         val appContext = context.applicationContext
         scope.launch(Dispatchers.Default) {
             var lastKey = ""
             var lastPushMs = 0L
+            var lastNodeCheckMs = 0L
             while (true) {
-                val s = uiState.value
-                val np = TileContract.NowPlaying(
-                    show = s.current?.title.orEmpty(),
-                    title = s.current?.episodeTitle.orEmpty(),
-                    isPlaying = s.isPlaying,
-                    isBuffering = s.isBuffering,
-                    positionMs = s.currentTime,
-                    durationMs = s.duration,
-                    timestampMs = System.currentTimeMillis(),
-                )
-                val key = "${np.show} ${np.title} ${np.isPlaying} ${np.isBuffering}"
-                val dueTick = np.isPlaying && System.currentTimeMillis() - lastPushMs >= TICK_MS
-                if (key != lastKey || dueTick) {
-                    lastKey = key
-                    lastPushMs = np.timestampMs
-                    push(appContext, np)
+                val now = System.currentTimeMillis()
+                if (now - lastNodeCheckMs >= NODE_CHECK_MS) {
+                    lastNodeCheckMs = now
+                    refreshWatchPresence(appContext)
                 }
-                delay(POLL_MS)
+                if (watchPresent) {
+                    val s = uiState.value
+                    val np = TileContract.NowPlaying(
+                        show = s.current?.title.orEmpty(),
+                        title = s.current?.episodeTitle.orEmpty(),
+                        isPlaying = s.isPlaying,
+                        isBuffering = s.isBuffering,
+                        positionMs = s.currentTime,
+                        durationMs = s.duration,
+                        timestampMs = now,
+                    )
+                    val key = "${np.show} ${np.title} ${np.isPlaying} ${np.isBuffering}"
+                    val dueTick = np.isPlaying && now - lastPushMs >= TICK_MS
+                    if (key != lastKey || dueTick) {
+                        lastKey = key
+                        lastPushMs = np.timestampMs
+                        push(appContext, np)
+                    }
+                }
+                delay(if (watchPresent) POLL_MS else IDLE_POLL_MS)
             }
+        }
+    }
+
+    private fun refreshWatchPresence(context: Context) {
+        try {
+            Wearable.getNodeClient(context).connectedNodes
+                .addOnSuccessListener { nodes -> watchPresent = nodes.any { it.isNearby } }
+                .addOnFailureListener { watchPresent = false }
+        } catch (_: Exception) {
+            watchPresent = false
         }
     }
 
@@ -66,8 +95,11 @@ object WearBridge {
             request.dataMap.putString(TileContract.KEY, TileContract.encode(np))
             Wearable.getDataClient(context)
                 .putDataItem(request.asPutDataRequest().setUrgent())
-        } catch (_: Exception) {
+                // L8: wear-path failures were fully silent — observe the Task.
+                .addOnFailureListener { e -> Log.w(TAG, "Tile frame push failed", e) }
+        } catch (e: Exception) {
             // No watch paired / GMS hiccup: the tile is best-effort by design.
+            Log.w(TAG, "Tile frame push threw", e)
         }
     }
 }

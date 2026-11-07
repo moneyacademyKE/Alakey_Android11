@@ -18,8 +18,16 @@ class FactStore @Inject constructor(private val dbSystem: com.example.alakey.sys
         return InformationModel.hydrate(base, factDao.getLatestFacts(base.id))
     }
 
+    /**
+     * Batched hydration (M13): one query for all facts, grouped in memory.
+     * [InformationModel.hydrate] resolves the latest fact per attribute
+     * itself, so this is semantically identical to per-entity
+     * [getLatestFacts] calls — minus the N+1 JOINs.
+     */
     suspend fun hydrateAll(items: List<PodcastEntity>): List<PodcastEntity> {
-        return items.map { hydrate(it) }
+        if (items.isEmpty()) return items
+        val factsByEntity = factDao.getAllFacts().groupBy { it.entityId }
+        return items.map { InformationModel.hydrate(it, factsByEntity[it.id].orEmpty()) }
     }
 
     suspend fun getFacts(entityId: String): List<FactEntity> = factDao.getFactsUsingEntity(entityId)

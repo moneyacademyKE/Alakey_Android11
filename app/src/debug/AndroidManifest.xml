@@ -7,7 +7,7 @@
             android:exported="false" />
         <receiver
             android:name=".debug.ReplReceiver"
-            android:exported="true">
+            android:exported="false">
             <intent-filter>
                 <action android:name="com.example.alakey.REPL_EVAL" />
             </intent-filter>

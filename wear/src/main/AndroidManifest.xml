@@ -34,7 +34,9 @@
 
         <activity
             android:name=".ToggleActivity"
-            android:exported="false"
+            android:exported="true"
+            android:noHistory="true"
+            android:excludeFromRecents="true"
             android:theme="@android:style/Theme.NoDisplay" />
     </application>
 

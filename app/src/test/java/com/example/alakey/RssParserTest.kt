@@ -1,7 +1,10 @@
 package com.example.alakey
 
+import com.example.alakey.data.EpisodeIds
 import com.example.alakey.data.RssParser
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -82,6 +85,67 @@ class RssParserTest {
     @Test
     fun `parse returns empty list for malformed xml`() {
         assertTrue(RssParser.parse("<rss><channel>", FEED_URL).isEmpty())
+    }
+
+    // M14: guid-less identity is a 64-bit SHA-256 of feedUrl|audioUrl —
+    // deterministic across processes and collision-safe against INSERT IGNORE.
+    @Test
+    fun `parse derives stable 64-bit fallback id when guid missing`() {
+        val audioUrl = "https://example.com/audio/episode-2.mp3"
+        val episodes = RssParser.parse(
+            """
+            <rss>
+                <channel>
+                    <title>Example Show</title>
+                    <item>
+                        <title>Episode Two</title>
+                        <enclosure url="$audioUrl" type="audio/mpeg" />
+                    </item>
+                </channel>
+            </rss>
+            """.trimIndent(),
+            FEED_URL
+        )
+
+        assertEquals(1, episodes.size)
+        assertEquals(EpisodeIds.derive(FEED_URL, audioUrl), episodes[0].id)
+        assertEquals(16, episodes[0].id.length)
+        assertEquals("Episode Two", episodes[0].episodeTitle)
+    }
+
+    @Test
+    fun `guid-less ids do not collide across feeds sharing audio urls`() {
+        // The v13 failure mode: two feeds, same audio path — 32-bit hashCode
+        // collided often enough to silently drop episodes on INSERT IGNORE.
+        val audioUrl = "https://cdn.example.com/shared/episode.mp3"
+        val a = RssParser.parse(itemXml(audioUrl), "https://a.example.com/feed.xml")
+        val b = RssParser.parse(itemXml(audioUrl), "https://b.example.com/feed.xml")
+        assertNotEquals(a[0].id, b[0].id)
+    }
+
+    private fun itemXml(audioUrl: String) = """
+        <rss><channel><title>Show</title>
+            <item><title>Ep</title><enclosure url="$audioUrl" type="audio/mpeg" /></item>
+        </channel></rss>
+    """.trimIndent()
+
+    @Test
+    fun `legacy hash id detection discriminates old and new id shapes`() {
+        // v13 rows the migration must rewrite (provable legacy shapes)…
+        assertTrue(EpisodeIds.isLegacyHashId("123456789"))
+        assertTrue(EpisodeIds.isLegacyHashId("-987654321"))
+        // …and the shapes it must never touch.
+        assertFalse(EpisodeIds.isLegacyHashId("https://feed.example.com/x/episode-1"))
+        assertFalse(EpisodeIds.isLegacyHashId("0123456789abcdef"))
+        assertFalse(EpisodeIds.isLegacyHashId(""))
+    }
+
+    @Test
+    fun `derive is deterministic and moves with both inputs`() {
+        val a = EpisodeIds.derive("https://feed.example.com", "https://a.example.com/x.mp3")
+        assertEquals(a, EpisodeIds.derive("https://feed.example.com", "https://a.example.com/x.mp3"))
+        assertNotEquals(a, EpisodeIds.derive("https://other.example.com", "https://a.example.com/x.mp3"))
+        assertNotEquals(a, EpisodeIds.derive("https://feed.example.com", "https://b.example.com/x.mp3"))
     }
 
     private companion object {

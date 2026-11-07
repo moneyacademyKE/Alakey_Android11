@@ -25,7 +25,17 @@ class FeedRepository @Inject constructor(
     private val client get() = networkSystem.client
 
     suspend fun searchPodcasts(query: String): Result<List<ItunesSearchResult>> = networkCall.run {
-        val request = Request.Builder().url("https://itunes.apple.com/search?term=$query&entity=podcast&media=podcast").build()
+        // M7: built via HttpUrl.Builder — a term containing '&'/'#'/UTF-8
+        // previously truncated or broke the whole request.
+        val url = okhttp3.HttpUrl.Builder()
+            .scheme("https")
+            .host("itunes.apple.com")
+            .addPathSegment("search")
+            .addQueryParameter("term", query)
+            .addQueryParameter("entity", "podcast")
+            .addQueryParameter("media", "podcast")
+            .build()
+        val request = Request.Builder().url(url).build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw Exception("iTunes search failed: ${response.code}")
             NetworkLogic.parseItunesResults(response.body?.string() ?: throw Exception("Empty response body"))
@@ -49,7 +59,18 @@ class FeedRepository @Inject constructor(
 
     suspend fun syncAll() = syncMutex.withLock {
         withContext(Dispatchers.IO) {
-            dao.getSubscribedFeeds().forEach { url -> subscribe(url).exceptionOrNull()?.printStackTrace() }
+            dao.getSubscribedFeeds().forEach { url ->
+                // L4: per-feed failures belong in the event log the app can
+                // query, not a printStackTrace nobody reads.
+                subscribe(url).exceptionOrNull()?.let { error ->
+                    Log.w("FeedRepository", "Feed sync failed: $url", error)
+                    eventLogDao.logEvent(
+                        EventLogEntity(type = "SYNC_FEED", payload = url, status = "FAILED", timestamp = System.currentTimeMillis())
+                    )
+                }
+            }
+            // M12: keep the event log bounded — one purge per sync, after writes.
+            eventLogDao.purgeOlderThan(System.currentTimeMillis() - EventLog.RETENTION_MS)
         }
     }
 
@@ -64,11 +85,11 @@ class FeedRepository @Inject constructor(
     }
 
     private suspend fun fetchValidFeed(url: String): String {
+        // M2: the third-party CORS-proxy fallback is gone — it leaked every
+        // feed URL to api.allorigins.win on direct-fetch failure. A failed
+        // direct fetch now surfaces as a logged sync failure instead.
         val direct = runCatching { fetchDirect(url) }.getOrNull()
         if (direct.isValidXmlFeed()) return direct.orEmpty()
-
-        val proxied = runCatching { fetchWithProxy(url) }.getOrNull()
-        if (proxied.isValidXmlFeed()) return proxied.orEmpty()
 
         throw Exception("Failed to fetch valid feed content")
     }
@@ -77,13 +98,6 @@ class FeedRepository @Inject constructor(
         client.newCall(Request.Builder().url(url).build()).execute().use { response ->
             if (!response.isSuccessful) throw Exception("Feed fetch failed: ${response.code}")
             response.body?.string() ?: throw Exception("Empty response body")
-        }
-    }
-
-    private suspend fun fetchWithProxy(url: String): String = withContext(Dispatchers.IO) {
-        client.newCall(Request.Builder().url("https://api.allorigins.win/get?url=$url").build()).execute().use { response ->
-            if (!response.isSuccessful) throw Exception("Proxy fetch failed: ${response.code}")
-            NetworkLogic.extractProxyContent(response.body?.string() ?: throw Exception("Empty proxy response"))
         }
     }
 

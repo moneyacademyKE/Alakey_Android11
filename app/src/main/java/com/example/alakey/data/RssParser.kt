@@ -54,7 +54,7 @@ object RssParser {
         val chaptersUrl = entry.directElements("podcast:chapters").firstOrNull()?.attr("url")?.takeIf { it.isNotEmpty() }
 
         return PodcastEntity(
-            id = if (guid.isNotEmpty()) "$feedUrl/$guid" else (feedUrl + audioUrl).hashCode().toString(),
+            id = if (guid.isNotEmpty()) "$feedUrl/$guid" else EpisodeIds.derive(feedUrl, audioUrl),
             title = channelTitle,
             episodeTitle = title,
             description = description,

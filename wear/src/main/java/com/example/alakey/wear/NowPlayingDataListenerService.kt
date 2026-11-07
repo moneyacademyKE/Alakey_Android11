@@ -18,7 +18,12 @@ class NowPlayingDataListenerService : WearableListenerService() {
                     val item = event.dataItem
                     if (item.uri.path != TileContract.DATA_PATH) return@mapNotNull null
                     val raw = DataMapItem.fromDataItem(item).dataMap.getString(TileContract.KEY)
-                    TileContract.decode(raw)
+                    // L8: malformed frames dropped silently — log the drop so
+                    // wire-format drift is diagnosable from the watch.
+                    TileContract.decode(raw) ?: run {
+                        android.util.Log.w("NowPlayingData", "Dropped malformed tile frame (len=${raw?.length ?: 0})")
+                        null
+                    }
                 }
                 .forEach { np ->
                     TileStateStore.update(this, np)
