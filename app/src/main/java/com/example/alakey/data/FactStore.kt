@@ -49,13 +49,6 @@ class FactStore @Inject constructor(private val dbSystem: com.example.alakey.sys
     /** M52: facts die with their entity — see FactDao.deleteByEntityIds. */
     suspend fun deleteFacts(ids: List<String>) = factDao.deleteByEntityIds(ids)
 
-    suspend fun getAttribute(entityId: String, attribute: String): String? {
-        return factDao.getFactsUsingEntity(entityId)
-            .filter { it.attribute == attribute }
-            .maxByOrNull { it.tx }
-            ?.value
-    }
-
     /** Retention: collapse history to the latest fact per (entityId, attribute). */
     suspend fun compact() = factDao.compact()
 }

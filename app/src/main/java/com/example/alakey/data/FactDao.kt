@@ -19,8 +19,6 @@ interface FactDao {
     @Query("SELECT * FROM facts WHERE entityId = :entityId")
     suspend fun getFactsUsingEntity(entityId: String): List<FactEntity>
 
-    @Query("SELECT * FROM facts WHERE attribute = :attribute")
-    suspend fun getFactsUsingAttribute(attribute: String): List<FactEntity>
     
     @Query("SELECT * FROM facts")
     suspend fun getAllFacts(): List<FactEntity>
