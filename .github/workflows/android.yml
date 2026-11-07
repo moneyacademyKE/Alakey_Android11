@@ -26,7 +26,10 @@ jobs:
         run: chmod +x gradlew
 
       - name: Run Unit Tests
-        run: ./gradlew testDebugUnitTest
+        # H7: testDebugUnitTest alone covers the two android modules; the
+        # tile-contract JVM tests pin the watch wire format (H3/M9/L74/L75)
+        # and previously gated nothing in CI.
+        run: ./gradlew testDebugUnitTest :tile-contract:test
 
       - name: Build Compose UI Tests
         run: ./gradlew assembleDebugAndroidTest
