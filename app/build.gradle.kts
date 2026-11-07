@@ -3,6 +3,8 @@ import java.util.Properties
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    // H2: Kotlin 2.x Compose compiler plugin (version from the root alias).
+    id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.dagger.hilt.android")
     id("com.google.devtools.ksp")
     id("jacoco") // Enable JaCoCo plugin
@@ -55,7 +57,8 @@ android {
     }
     
     buildFeatures { compose = true; buildConfig = true }
-    composeOptions { kotlinCompilerExtensionVersion = "1.5.10" }
+    // H2: kotlinCompilerExtensionVersion is gone — with the Compose Gradle
+    // plugin the compiler extension version is pinned to the Kotlin version.
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
