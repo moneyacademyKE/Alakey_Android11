@@ -9,7 +9,6 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.example.alakey.ui.MainContent
 import com.example.alakey.workers.FeedSyncWorker
-import androidx.core.view.WindowCompat
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -27,7 +26,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         dbSystem.start()
         networkSystem.start()
-        WindowCompat.setDecorFitsSystemWindows(window, false)
         
         FeedSyncWorker.schedule(this)
         WorkManager.getInstance(this).enqueueUniqueWork(
