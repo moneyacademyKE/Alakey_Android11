@@ -107,8 +107,6 @@ class AppViewModel @Inject constructor(
     val sleepTimerTotalSeconds: StateFlow<Int> = playbackClient.sleepTimerTotalSeconds
     val sleepAtEpisodeEnd: StateFlow<Boolean> = playbackClient.sleepAtEpisodeEnd
 
-    private val _history = androidx.compose.runtime.mutableStateListOf<UiState>()
-    val history: List<UiState> get() = _history
     private var searchJob: Job? = null
     private val searchGeneration = AtomicLong(0)
     private var chaptersLoadedFor: String? = null
@@ -253,14 +251,10 @@ class AppViewModel @Inject constructor(
     }
 
     private fun updateState(transform: (UiState) -> UiState) {
-        _uiState.update { current ->
-            val next = transform(current)
-            if (next != current) {
-                _history.add(next)
-                if (_history.size > 50) _history.removeAt(0)
-            }
-            next
-        }
+        // M65: the time-travel buffer (50 retained UiState snapshots, written
+        // inside this CAS lambda, read by nothing since DebugOverlay lost its
+        // entry point) is gone — equal values pass through untouched.
+        _uiState.update(transform)
     }
 
     private fun emitEvent(event: UserEvent) { viewModelScope.launch { _userEvents.emit(event) } }
