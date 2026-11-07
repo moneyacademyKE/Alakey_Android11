@@ -80,7 +80,14 @@ fun MainContent() {
 
     DisposableEffect(sleepTimerSeconds > 0) {
         if (sleepTimerSeconds > 0) {
-            sensorManager.registerListener(motionDetector, sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER), SensorManager.SENSOR_DELAY_UI)
+            // L70: no accelerometer (or registration refused) previously armed
+            // the sleep-timer UI with shake-to-extend silently absent.
+            val sensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+            if (sensor == null) {
+                android.util.Log.w("AlakeyUI", "No accelerometer — shake-to-extend unavailable on this device")
+            } else if (!sensorManager.registerListener(motionDetector, sensor, SensorManager.SENSOR_DELAY_UI)) {
+                android.util.Log.w("AlakeyUI", "Accelerometer registration failed — shake-to-extend unavailable")
+            }
         }
         onDispose { sensorManager.unregisterListener(motionDetector) }
     }
