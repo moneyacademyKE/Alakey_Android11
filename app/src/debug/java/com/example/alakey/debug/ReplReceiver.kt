@@ -20,41 +20,53 @@ class ReplReceiver : BroadcastReceiver() {
     @Inject lateinit var repository: UniversalRepository
     @Inject lateinit var audioSystem: AudioSystem
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != "com.example.alakey.REPL_EVAL") return
 
         val cmd = intent.getStringExtra("cmd") ?: return
         Log.d("REPL", "Received command: $cmd")
         Toast.makeText(context, "REPL: $cmd", Toast.LENGTH_SHORT).show()
-        evaluate(cmd.trim(), context)
-    }
 
-    private fun evaluate(cmd: String, context: Context) {
+        // L67: onReceive returning makes the process kill-eligible while the
+        // command is in flight (refresh, exec-sql, assert-fact all touch the
+        // DB) — a dropped sync or half-applied fact write, silently. goAsync()
+        // holds a PendingResult and finish() fires exactly when the command
+        // completes (success, failure or cancellation). The scope is a
+        // companion, not a per-instance field: manifest receivers get a fresh
+        // instance per broadcast, so an instance scope leaked one SupervisorJob
+        // per command forever.
+        val pending = goAsync()
         scope.launch {
             try {
-                when {
-                    cmd == "refresh" -> {
-                        repository.syncAll()
-                        Toast.makeText(context, "Refreshed all feeds", Toast.LENGTH_SHORT).show()
-                    }
-                    cmd.startsWith("subscribe") -> subscribe(cmd, context)
-                    cmd.startsWith("query-logs") -> queryLogs(cmd, context)
-                    cmd.startsWith("grep-logs") -> grepLogs(cmd, context)
-                    cmd.startsWith("assert-fact") -> assertFact(cmd, context)
-                    cmd == "inspect-state" -> inspectState(context)
-                    cmd.startsWith("exec-sql") -> execSql(cmd, context)
-                    cmd.startsWith("play-id") -> playId(cmd, context)
-                    cmd == "pause" -> audioSystem.player?.pause()
-                    cmd == "toggle" -> audioSystem.player?.let { if (it.isPlaying) it.pause() else it.play() }
-                    cmd == "diagnose" -> diagnose(context)
-                    else -> Log.w("REPL", "Unknown command: $cmd")
-                }
+                evaluate(cmd.trim(), context)
             } catch (e: Exception) {
                 Log.e("REPL", "Eval failed", e)
             }
+        }.invokeOnCompletion { pending.finish() }
+    }
+
+    private suspend fun evaluate(cmd: String, context: Context) {
+        when {
+            cmd == "refresh" -> {
+                repository.syncAll()
+                Toast.makeText(context, "Refreshed all feeds", Toast.LENGTH_SHORT).show()
+            }
+            cmd.startsWith("subscribe") -> subscribe(cmd, context)
+            cmd.startsWith("query-logs") -> queryLogs(cmd, context)
+            cmd.startsWith("grep-logs") -> grepLogs(cmd, context)
+            cmd.startsWith("assert-fact") -> assertFact(cmd, context)
+            cmd == "inspect-state" -> inspectState(context)
+            cmd.startsWith("exec-sql") -> execSql(cmd, context)
+            cmd.startsWith("play-id") -> playId(cmd, context)
+            cmd == "pause" -> audioSystem.player?.pause()
+            cmd == "toggle" -> audioSystem.player?.let { if (it.isPlaying) it.pause() else it.play() }
+            cmd == "diagnose" -> diagnose(context)
+            else -> Log.w("REPL", "Unknown command: $cmd")
         }
+    }
+
+    private companion object {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     }
 
     private suspend fun subscribe(cmd: String, context: Context) {

@@ -10,6 +10,7 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.example.alakey.data.PodcastEntity
 import com.example.alakey.service.AudioService
+import com.example.alakey.system.Monotonic
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -82,14 +83,11 @@ class PlaybackClient @Inject constructor(
     private var reconcileJob: Job? = null
     @Volatile private var cleanedUp = false
 
-    // Sleep Timer
-    private val _sleepTimerSeconds = MutableStateFlow(0)
-    val sleepTimerSeconds: StateFlow<Int> = _sleepTimerSeconds.asStateFlow()
+    // Sleep Timer (L69: deadline-derived; extracted to SleepTimer)
+    private val sleepTimer = SleepTimer(scope) { pause() }
+    val sleepTimerSeconds: StateFlow<Int> get() = sleepTimer.seconds
     /** Duration the timer was armed with; 0 when disarmed. Lets UI render a drain fraction. */
-    private val _sleepTimerTotalSeconds = MutableStateFlow(0)
-    val sleepTimerTotalSeconds: StateFlow<Int> = _sleepTimerTotalSeconds.asStateFlow()
-    private var sleepTimerJob: Job? = null
-    private var initialSleepDuration = 0
+    val sleepTimerTotalSeconds: StateFlow<Int> get() = sleepTimer.totalSeconds
 
     // Smart Resume: tracked at the listener so EVERY pause source counts
     // (notification, headset, lockscreen — not just in-app taps).
@@ -99,9 +97,13 @@ class PlaybackClient @Inject constructor(
     private val _sleepAtEpisodeEnd = MutableStateFlow(false)
     val sleepAtEpisodeEnd: StateFlow<Boolean> = _sleepAtEpisodeEnd.asStateFlow()
 
+    // M60: tracked, not fire-and-forget — cleanup() must be a real
+    // cancellation boundary for every collector that touches the controller.
+    private var endedJob: Job? = null
+
     init {
         connect()
-        scope.launch {
+        endedJob = scope.launch {
             playbackEnded.collect { if (_sleepAtEpisodeEnd.value) { _sleepAtEpisodeEnd.value = false; pause() } }
         }
     }
@@ -169,7 +171,7 @@ class PlaybackClient @Inject constructor(
         controller?.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 processEvent(PlaybackEvent.IsPlayingChanged(isPlaying))
-                if (!isPlaying) lastPauseTime = System.currentTimeMillis()
+                if (!isPlaying) lastPauseTime = Monotonic.now()
                 if (isPlaying) startProgressPolling() else stopProgressPolling()
             }
 
@@ -181,7 +183,10 @@ class PlaybackClient @Inject constructor(
                     }
                 }
                 if (playbackState == Player.STATE_ENDED) {
-                    scope.launch { _playbackEnded.emit(Unit) }
+                    // M60: after cleanup() this emit has no collector and would
+                    // suspend forever (replay=0) — a leaked coroutine against a
+                    // released controller.
+                    if (!cleanedUp) scope.launch { _playbackEnded.emit(Unit) }
                 }
             }
 
@@ -282,12 +287,32 @@ class PlaybackClient @Inject constructor(
             .build()
 
     /**
+     * M64: the reconnect ladder is finite (5 attempts, ~7.75s) by design — but
+     * exhaustion previously left NO event that could ever ask for another
+     * attempt (connect()'s only callers are init and the ladder itself), so a
+     * session teardown slower than the ladder permanently bricked playback in
+     * a live process. User intent re-arms it: the L48 slot the UI's no-op
+     * connect() used to occupy, and the primary playback commands below.
+     */
+    fun requestReconnect() {
+        if (cleanedUp) return
+        if (controller?.isConnected == true) return
+        scheduleReconnect()
+    }
+
+    private fun ensureConnectedForUserIntent() {
+        if (cleanedUp) return
+        if (controller?.isConnected != true) scheduleReconnect()
+    }
+
+    /**
      * Play [podcast] as part of [queue]'s playlist (gapless advance, notification
      * next/prev). Restores saved position when resuming a started episode.
      * With autoplay = false the player is prepared at the saved position but
      * stays paused — restoring is data; playing is user intent (#49).
      */
     fun play(podcast: PodcastEntity, queue: List<PodcastEntity> = emptyList(), autoplay: Boolean = true) {
+        ensureConnectedForUserIntent()
         val queueItems = queue.filter { it.audioUrl.isNotBlank() }
         val index = queueItems.indexOfFirst { it.id == podcast.id }
         val items: List<PodcastEntity>
@@ -327,8 +352,8 @@ class PlaybackClient @Inject constructor(
 
     fun playlistSize(): Int = controller?.mediaItemCount ?: 0
 
-    fun next() { controller?.seekToNextMediaItem() }
-    fun previous() { controller?.seekToPreviousMediaItem() }
+    fun next() { ensureConnectedForUserIntent(); controller?.seekToNextMediaItem() }
+    fun previous() { ensureConnectedForUserIntent(); controller?.seekToPreviousMediaItem() }
 
     /**
      * M4: the position we actually know — the live controller if connected,
@@ -342,7 +367,8 @@ class PlaybackClient @Inject constructor(
                 .takeIf { _state.value.currentMediaId == _desiredState.value.mediaItem?.mediaId }
 
     fun resume() {
-        if (lastPauseTime > 0 && (System.currentTimeMillis() - lastPauseTime) > RESUME_REWIND_AFTER_MS) {
+        ensureConnectedForUserIntent()
+        if (lastPauseTime > 0 && (Monotonic.now() - lastPauseTime) > RESUME_REWIND_AFTER_MS) {
             rewindSeekTarget(knownPosition(), RESUME_REWIND_MS)?.let { target ->
                 _desiredState.update { it.copy(seekPosition = target) }
                 Log.d("PlaybackClient", "Smart Resume: Rewind Intent Set")
@@ -363,6 +389,7 @@ class PlaybackClient @Inject constructor(
      * notification pause — the next toggle went the wrong way.
      */
     fun togglePlay() {
+        ensureConnectedForUserIntent()
         if (_state.value.isPlaying) pause() else resume()
     }
 
@@ -398,55 +425,42 @@ class PlaybackClient @Inject constructor(
     }
 
     fun startSleepTimer(minutes: Int) {
-        sleepTimerJob?.cancel()
         _sleepAtEpisodeEnd.value = false
-        initialSleepDuration = minutes * 60
-        _sleepTimerSeconds.value = initialSleepDuration
-        _sleepTimerTotalSeconds.value = initialSleepDuration
         // Never force playback: a timer set while paused must stay paused.
-
-        sleepTimerJob = scope.launch {
-            while (_sleepTimerSeconds.value > 0) {
-                delay(1000)
-                _sleepTimerSeconds.value--
-            }
-            _sleepTimerTotalSeconds.value = 0
-            pause()
-        }
+        sleepTimer.start(minutes)
     }
 
     /** Pause when the current episode ends. Countdown display mirrors remaining episode time. */
     fun startSleepTimerAtEnd() {
-        sleepTimerJob?.cancel()
         _sleepAtEpisodeEnd.value = true
         val c = controller ?: return
-        _sleepTimerSeconds.value = ((c.duration - c.currentPosition).coerceAtLeast(0) / 1000).toInt()
-        _sleepTimerTotalSeconds.value = _sleepTimerSeconds.value
+        sleepTimer.displayOnly(((c.duration - c.currentPosition).coerceAtLeast(0) / 1000).toInt())
     }
 
     fun resetSleepTimer() {
         if (_sleepAtEpisodeEnd.value) return
-        if (_sleepTimerSeconds.value > 0) {
-            _sleepTimerSeconds.value = initialSleepDuration
-        }
+        sleepTimer.reset()
     }
 
     fun cancelSleepTimer() {
-        sleepTimerJob?.cancel()
         _sleepAtEpisodeEnd.value = false
-        initialSleepDuration = 0
-        _sleepTimerSeconds.value = 0
-        _sleepTimerTotalSeconds.value = 0
+        sleepTimer.cancel()
     }
 
     private fun persistedSpeed(): Float =
         prefs.getFloat(KEY_SPEED, 1.0f).takeIf { it > 0f } ?: 1f
 
     fun cleanup() {
+        // M60: cleanup is now a real cancellation boundary — previously it
+        // cancelled 2 of 4 jobs (sleep timer, reconnect) while the reconciliation
+        // collector and the playbackEnded collector kept running against a
+        // controller future that cleanup itself releases.
         cleanedUp = true
         stopProgressPolling()
-        sleepTimerJob?.cancel()
+        sleepTimer.cancel()
         reconnectJob?.cancel()
+        reconcileJob?.cancel()
+        endedJob?.cancel()
         controllerFuture?.let { MediaController.releaseFuture(it) }
     }
 

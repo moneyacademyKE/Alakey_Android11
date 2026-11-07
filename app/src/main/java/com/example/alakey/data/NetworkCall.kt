@@ -1,6 +1,7 @@
 package com.example.alakey.data
 
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -15,6 +16,10 @@ class NetworkCall @Inject constructor() {
             repeat(retries - 1) {
                 try {
                     return@withContext Result.success(block())
+                } catch (e: CancellationException) {
+                    // M66: a cancelled caller is not a failed call — rethrow so
+                    // cancellation stays a lifecycle event up the chain.
+                    throw e
                 } catch (e: Exception) {
                     Log.w("NetworkCall", "Call failed. Retrying in ${currentDelay}ms", e)
                     delay(currentDelay)
@@ -24,6 +29,8 @@ class NetworkCall @Inject constructor() {
 
             try {
                 Result.success(block())
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e("NetworkCall", "Call failed after retries", e)
                 Result.failure(e)

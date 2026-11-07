@@ -30,6 +30,9 @@ interface PodcastDao {
     @Query("SELECT * FROM podcasts WHERE title = :title")
     suspend fun getEpisodesByTitle(title: String): List<PodcastEntity>
 
+    @Query("SELECT id FROM podcasts WHERE title = :title")
+    suspend fun getIdsByTitle(title: String): List<String>
+
     @Query("DELETE FROM podcasts WHERE title = :title")
     suspend fun deleteByTitle(title: String)
 

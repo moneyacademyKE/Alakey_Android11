@@ -66,7 +66,7 @@ fun GlassDock(
         Box(
             Modifier
                 .fillMaxSize()
-                .shadow(24.dp, CircleShape, spotColor = Color(0xFF00F0FF).copy(0.3f))
+                .shadow(24.dp, CircleShape, spotColor = MaterialTheme.colorScheme.primary.copy(0.3f))
                 .clip(CircleShape)
                 .background(Color.Black.copy(0.6f))
                 .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(0.4f), Color.White.copy(0.1f))), CircleShape)
@@ -109,7 +109,7 @@ fun GlassDock(
 @Composable
 private fun DockItem(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, isSelected: Boolean, onClick: () -> Unit) {
     val haptics = LocalHapticFeedback.current
-    val color by animateColorAsState(targetValue = if (isSelected) Color(0xFF00F0FF) else Color.White.copy(0.4f), label = "color")
+    val color by animateColorAsState(targetValue = if (isSelected) MaterialTheme.colorScheme.primary else Color.White.copy(0.4f), label = "color")
     val scale by animateFloatAsState(targetValue = if (isSelected) 1.2f else 1f, label = "scale")
     
     Column(
@@ -175,12 +175,12 @@ fun SpotlightHero(
                     .padding(16.dp)
                     .clip(CircleShape)
                     .background(Color.Black.copy(0.6f))
-                    .border(1.dp, Color(0xFF00F0FF).copy(0.5f), CircleShape)
+                    .border(1.dp, MaterialTheme.colorScheme.primary.copy(0.5f), CircleShape)
                     .padding(horizontal = 12.dp, vertical = 6.dp)
             ) {
                 Text(
                     text = "${timerSeconds / 60}:${(timerSeconds % 60).toString().padStart(2, '0')}",
-                    color = Color(0xFF00F0FF),
+                    color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold
                 )
@@ -192,7 +192,7 @@ fun SpotlightHero(
             Modifier.fillMaxSize().padding(24.dp),
             verticalArrangement = Arrangement.Bottom
         ) {
-            Box(Modifier.clip(RoundedCornerShape(50)).background(Color(0xFF00F0FF).copy(0.9f)).padding(horizontal = 12.dp, vertical = 6.dp)) {
+            Box(Modifier.clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.primary.copy(0.9f)).padding(horizontal = 12.dp, vertical = 6.dp)) {
                 Text(if (podcast.lastPlayed > 0) "NOW PLAYING" else "FEATURED", color = Color.Black, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
             }
             Spacer(Modifier.height(16.dp))
@@ -254,14 +254,14 @@ private fun IconButton(
     Box(
         Modifier
             .clip(CircleShape)
-            .background(if (isSelected) Color(0xFF00F0FF).copy(0.2f) else Color.White.copy(0.1f))
-            .border(1.dp, if (isSelected) Color(0xFF00F0FF).copy(0.4f) else Color.White.copy(0.1f), CircleShape)
+            .background(if (isSelected) MaterialTheme.colorScheme.primary.copy(0.2f) else Color.White.copy(0.1f))
+            .border(1.dp, if (isSelected) MaterialTheme.colorScheme.primary.copy(0.4f) else Color.White.copy(0.1f), CircleShape)
             .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
             .pressScale(interaction)
             .clickable(interactionSource = interaction, indication = LocalIndication.current) { onClick() }
             .semantics { contentDescription = icon.name; role = Role.Button }
             .padding(10.dp)
     ) {
-        Icon(icon, contentDescription = icon.name, tint = if (isSelected) Color(0xFF00F0FF) else Color.White, modifier = Modifier.size(22.dp))
+        Icon(icon, contentDescription = icon.name, tint = if (isSelected) MaterialTheme.colorScheme.primary else Color.White, modifier = Modifier.size(22.dp))
     }
 }

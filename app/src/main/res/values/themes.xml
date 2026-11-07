@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-
-    <style name="Theme.Alakey" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- M58: cold start painted a WHITE starting window over an all-black app
+         (Light platform theme + no windowBackground override). The starting
+         window draws the activity theme's background before Compose mounts. -->
+    <style name="Theme.Alakey" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
 </resources>

@@ -57,6 +57,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.alakey.data.ItunesSearchResult
 import com.example.alakey.data.PodcastEntity
 import com.example.alakey.domain.HeadsetResumeLogic
+import com.example.alakey.system.Monotonic
 
 @Composable
 fun MainContent() {
@@ -79,7 +80,14 @@ fun MainContent() {
 
     DisposableEffect(sleepTimerSeconds > 0) {
         if (sleepTimerSeconds > 0) {
-            sensorManager.registerListener(motionDetector, sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER), SensorManager.SENSOR_DELAY_UI)
+            // L70: no accelerometer (or registration refused) previously armed
+            // the sleep-timer UI with shake-to-extend silently absent.
+            val sensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+            if (sensor == null) {
+                android.util.Log.w("AlakeyUI", "No accelerometer — shake-to-extend unavailable on this device")
+            } else if (!sensorManager.registerListener(motionDetector, sensor, SensorManager.SENSOR_DELAY_UI)) {
+                android.util.Log.w("AlakeyUI", "Accelerometer registration failed — shake-to-extend unavailable")
+            }
         }
         onDispose { sensorManager.unregisterListener(motionDetector) }
     }
@@ -255,16 +263,13 @@ private fun HeaderAction(icon: androidx.compose.ui.graphics.vector.ImageVector, 
 private fun LibraryContent(state: AppViewModel.UiState, vm: AppViewModel, onAdd: () -> Unit, onTimer: () -> Unit) {
     val filters = listOf("All", "Continue", "New", "Short")
     var expanded by rememberSaveable { mutableStateOf(emptyList<String>()) }
-    val filtered = remember(state.podcasts, state.optimisticPodcasts, state.activeFilter) {
-        LibraryFilters.apply(state.activeFilter, state.podcasts + state.optimisticPodcasts)
-    }
     Column(Modifier.fillMaxSize()) {
         LazyRow(Modifier.fillMaxWidth().padding(vertical = 12.dp), contentPadding = PaddingValues(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(filters) { filter ->
                 val isSelected = filter == state.activeFilter
                 Text(
-                    filter, color = if (isSelected) Color(0xFF00F0FF) else Color.White.copy(.7f),
-                    modifier = Modifier.clip(RoundedCornerShape(50)).background(if (isSelected) Color(0xFF00F0FF).copy(.3f) else Color.White.copy(.1f))
+                    filter, color = if (isSelected) MaterialTheme.colorScheme.primary else Color.White.copy(.7f),
+                    modifier = Modifier.clip(RoundedCornerShape(50)).background(if (isSelected) MaterialTheme.colorScheme.primary.copy(.3f) else Color.White.copy(.1f))
                         .clickable { vm.setFilter(filter) }.padding(horizontal = 16.dp, vertical = 12.dp)
                         .semantics { role = Role.Tab; selected = isSelected; contentDescription = "$filter filter" }
                 )
@@ -275,8 +280,8 @@ private fun LibraryContent(state: AppViewModel.UiState, vm: AppViewModel, onAdd:
                 val hero = state.current ?: state.podcasts.maxByOrNull { it.lastPlayed }
                 hero?.let { SpotlightHero(it, state.sleepTimerSeconds, { vm.play(it) }, { vm.addToQueue(it) }, vm::playPreviousEpisode, vm::playNextEpisode, onTimer, { vm.setPlayerOpen(true) }) }
             }
-            if (filtered.isEmpty()) item { EmptyState(Icons.Rounded.FilterListOff, if (state.podcasts.isEmpty()) "Build your library" else "No episodes found", "Try a different filter or add more shows.", if (state.podcasts.isEmpty()) "Add podcast" else null, onAdd) }
-            val groups = if (state.activeFilter == "All") filtered.groupBy { it.title } else mapOf("Results" to filtered)
+            if (state.filtered.isEmpty()) item { EmptyState(Icons.Rounded.FilterListOff, if (state.podcasts.isEmpty()) "Build your library" else "No episodes found", "Try a different filter or add more shows.", if (state.podcasts.isEmpty()) "Add podcast" else null, onAdd) }
+            val groups = if (state.activeFilter == "All") state.filtered.groupBy { it.title } else mapOf("Results" to state.filtered)
             groups.forEach { (title, episodes) ->
                 if (episodes.isNotEmpty()) {
                     item(key = "header_$title") {
@@ -431,7 +436,7 @@ class MotionDetector(private val onShake: () -> Unit) : android.hardware.SensorE
     private val shakeThreshold = 2500
     override fun onSensorChanged(event: android.hardware.SensorEvent?) {
         if (event == null) return
-        val now = System.currentTimeMillis()
+        val now = Monotonic.now()
         if (now - lastUpdate > 100) {
             val diff = now - lastUpdate
             lastUpdate = now
