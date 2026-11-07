@@ -45,7 +45,7 @@ object WearBridge {
             return
         }
         val appContext = context.applicationContext
-        scope.launch(Dispatchers.Default) {
+        val job = scope.launch(Dispatchers.Default) {
             var lastKey = ""
             var lastPushMs = 0L
             var lastNodeCheckMs = 0L
@@ -77,6 +77,11 @@ object WearBridge {
                 delay(if (watchPresent) POLL_MS else IDLE_POLL_MS)
             }
         }
+        // H10: the latch is process-global but the loop dies with the caller's
+        // scope (viewModelScope on Activity finish). Without releasing it here,
+        // the next start() returns at the CAS guard and the watch tile never
+        // receives another frame for the rest of the process lifetime.
+        job.invokeOnCompletion { started.set(false) }
     }
 
     private fun refreshWatchPresence(context: Context) {
