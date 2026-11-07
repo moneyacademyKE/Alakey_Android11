@@ -12,7 +12,10 @@ import org.junit.Test
  */
 class LegacyDecisionTest {
 
-    private val floor = 13 // MIGRATION_FLOOR: lowest version with a real Migration
+    // M50: the production constant, not a copy — a floor bump for a real v15
+    // migration previously would have left these pins asserting 13 against a
+    // moved floor while production wiped v13 installs.
+    private val floor = MIGRATION_FLOOR
 
     @Test
     fun `no database file - absent, nothing to do`() {
