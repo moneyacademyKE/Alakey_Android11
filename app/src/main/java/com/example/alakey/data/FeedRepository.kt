@@ -57,12 +57,20 @@ class FeedRepository @Inject constructor(
         }
     }
 
-    suspend fun syncAll() = syncMutex.withLock {
+    /** M67: per-feed failures are data — the worker decides retryability from this. */
+    data class SyncOutcome(val feeds: Int, val failures: Int) {
+        val allFailed: Boolean get() = feeds > 0 && failures == feeds
+    }
+
+    suspend fun syncAll(): SyncOutcome = syncMutex.withLock {
         withContext(Dispatchers.IO) {
-            dao.getSubscribedFeeds().forEach { url ->
+            val feeds = dao.getSubscribedFeeds()
+            var failures = 0
+            feeds.forEach { url ->
                 // L4: per-feed failures belong in the event log the app can
                 // query, not a printStackTrace nobody reads.
                 subscribe(url).exceptionOrNull()?.let { error ->
+                    failures++
                     Log.w("FeedRepository", "Feed sync failed: $url", error)
                     eventLogDao.logEvent(
                         EventLogEntity(type = "SYNC_FEED", payload = url, status = "FAILED", timestamp = System.currentTimeMillis())
@@ -71,6 +79,7 @@ class FeedRepository @Inject constructor(
             }
             // M12: keep the event log bounded — one purge per sync, after writes.
             eventLogDao.purgeOlderThan(System.currentTimeMillis() - EventLog.RETENTION_MS)
+            SyncOutcome(feeds = feeds.size, failures = failures)
         }
     }
 

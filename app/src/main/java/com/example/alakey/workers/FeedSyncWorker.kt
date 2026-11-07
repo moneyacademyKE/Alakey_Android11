@@ -6,6 +6,7 @@ import androidx.work.*
 import com.example.alakey.data.UniversalRepository
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import kotlinx.coroutines.CancellationException
 import java.util.concurrent.TimeUnit
 
 @HiltWorker
@@ -15,9 +16,16 @@ class FeedSyncWorker @AssistedInject constructor(
     private val repo: UniversalRepository
 ) : CoroutineWorker(c, p) {
     override suspend fun doWork(): Result = try {
-        repo.syncAll()
-        Result.success()
+        val outcome = repo.syncAll()
+        // M67: total failure is retryable — syncAll previously swallowed every
+        // per-feed failure and returned Unit, so this worker reported success
+        // with a permanently stale library and WorkManager backoff never fired.
+        if (outcome.allFailed) Result.retry() else Result.success()
+    } catch (e: CancellationException) {
+        // M66: cancellation is a lifecycle event, not a data failure.
+        throw e
     } catch (e: Exception) {
+        android.util.Log.w("FeedSyncWorker", "Feed sync threw", e)
         Result.retry()
     }
 
